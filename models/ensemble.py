@@ -1,37 +1,58 @@
 """
 Ensemble model — stacks base model predictions using a Ridge meta-learner.
-Trained via out-of-fold (OOF) predictions to avoid leakage into the meta-layer.
-Also provides a confidence score based on base model agreement.
+
+The meta-learner is trained on out-of-fold predictions produced with
+sklearn's TimeSeriesSplit, so every OOF prediction comes from a model
+that saw only PAST data. After the OOF pass, the base models are refit
+on the full training window so production predictions use all data.
+
+Confidence is directional agreement: the fraction of base models whose
+predicted sign matches the ensemble's predicted sign. With three base
+models this yields 1.0, 0.67, or 0.33 — a gate at 0.60 means "at least
+two of three models agree on direction".
 """
 import numpy as np
-from sklearn.linear_model import Ridge
-from sklearn.model_selection import KFold
+from sklearn.base import clone
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.svm import SVR
+
+
+def make_base_models() -> dict:
+    """
+    Fresh, unfitted base estimators tuned for a NEXT-DAY RETURN target
+    (values on the order of 0.01, not price levels — hence the small
+    SVR epsilon; the old epsilon=0.1 would predict a constant).
+    """
+    return {
+        'Linear Regression': LinearRegression(),
+        'Random Forest': RandomForestRegressor(
+            n_estimators=100, max_depth=10,
+            min_samples_split=5, min_samples_leaf=2,
+            random_state=42, n_jobs=-1,
+        ),
+        'SVR': SVR(kernel='rbf', C=1.0, gamma='scale', epsilon=0.0005),
+    }
 
 
 class EnsembleModel:
-    """
-    Stacking ensemble over the four base models.
+    """Stacking ensemble with a leakage-free meta-learner."""
 
-    Base models are passed in already trained. The ensemble fits a
-    Ridge meta-learner on their out-of-fold predictions so it learns
-    how to weight and correct each model's output.
-    """
-
-    def __init__(self, base_models: dict):
+    def __init__(self, base_models: dict = None):
         """
         Args:
-            base_models: Dict mapping model name → fitted model object.
-                         Each model must implement .predict(X) -> ndarray.
-                         Example:
-                           {
-                             'Linear Regression': lr_model,
-                             'Random Forest':     rf_model,
-                             'SVR':               svr_model,
-                             'Neural Network':    nn_model,
-                           }
+            base_models: Dict mapping model name -> sklearn estimator
+                         (fitted or not — fit() clones and refits them).
+                         Defaults to make_base_models().
         """
-        self.base_models  = base_models
-        self.meta_learner = Ridge(alpha=1.0)
+        self.base_models  = base_models if base_models is not None \
+                            else make_base_models()
+        # alpha must be tiny: the meta-features are return-scale (~0.005),
+        # so X'X entries are ~1e-5 per sample. alpha=1.0 (the price-scale
+        # default) would dominate the normal equations and shrink the
+        # meta-learner to a constant.
+        self.meta_learner = Ridge(alpha=1e-4)
         self.is_fitted    = False
 
     # ------------------------------------------------------------------
@@ -41,35 +62,36 @@ class EnsembleModel:
     def fit(self, X_train: np.ndarray, y_train: np.ndarray,
             n_splits: int = 5) -> None:
         """
-        Generate out-of-fold predictions and fit the meta-learner.
+        Fit the meta-learner on out-of-fold predictions, then refit all
+        base models on the full training window.
 
-        Uses time-series KFold (no shuffle) so no future data leaks
-        into any fold's training set.
-
-        Args:
-            X_train:  Training feature matrix.
-            y_train:  Training target array.
-            n_splits: Number of CV folds (default 5).
+        TimeSeriesSplit guarantees each validation chunk is strictly
+        AFTER its training data, so no future information reaches the
+        meta-learner. Cloned estimators are used for the OOF pass so the
+        production base models are never left fitted on a fold subset.
         """
-        n_models = len(self.base_models)
-        oof      = np.zeros((len(X_train), n_models))
+        names = list(self.base_models.keys())
+        tscv  = TimeSeriesSplit(n_splits=n_splits)
 
-        kf = KFold(n_splits=n_splits, shuffle=False)
+        oof_blocks, y_blocks = [], []
+        for train_idx, val_idx in tscv.split(X_train):
+            fold_preds = []
+            for name in names:
+                m = clone(self.base_models[name])
+                m.fit(X_train[train_idx], y_train[train_idx])
+                fold_preds.append(np.asarray(m.predict(X_train[val_idx])).flatten())
+            oof_blocks.append(np.column_stack(fold_preds))
+            y_blocks.append(y_train[val_idx])
 
-        for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
-            X_fold_train = X_train[train_idx]
-            y_fold_train = y_train[train_idx]
-            X_fold_val   = X_train[val_idx]
+        self.meta_learner.fit(np.vstack(oof_blocks), np.concatenate(y_blocks))
 
-            for col, (name, model) in enumerate(self.base_models.items()):
-                # Refit base model on fold subset
-                model.fit(X_fold_train, y_fold_train)
-                oof[val_idx, col] = model.predict(X_fold_val)
+        # Production base models: refit on everything
+        for name in names:
+            self.base_models[name].fit(X_train, y_train)
 
-        # Fit meta-learner on stacked OOF predictions
-        self.meta_learner.fit(oof, y_train)
         self.is_fitted = True
-        print(f"✓ Ensemble fitted  ({n_splits} folds, {n_models} base models)")
+        print(f"Ensemble fitted ({n_splits} time-series folds, "
+              f"{len(names)} base models)")
 
     # ------------------------------------------------------------------
     # Predict
@@ -77,42 +99,28 @@ class EnsembleModel:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
-        Generate ensemble predictions.
-
-        Gets predictions from all base models, stacks them, then passes
-        through the meta-learner.
-
-        Args:
-            X: Feature matrix, shape (n_samples, n_features)
-
-        Returns:
-            Predictions array, shape (n_samples,)
+        Predict next-day returns, shape (n_samples,).
         """
         if not self.is_fitted:
             raise RuntimeError("Call fit() before predict().")
-
-        stacked = self._stack_predictions(X)
-        return self.meta_learner.predict(stacked)
+        return self.meta_learner.predict(self._stack_predictions(X))
 
     def get_confidence(self, X: np.ndarray) -> float:
         """
-        Return a confidence score for predictions on X.
+        Directional agreement between base models and the ensemble.
 
-        Confidence = 1 - normalised std of base model predictions.
-        Higher value means models agree more → higher confidence.
-        Returns a scalar in [0, 1].
-
-        Args:
-            X: Feature matrix (typically a single row for live trading).
+        Returns a scalar in [0, 1]: the mean (over rows) fraction of
+        base models whose predicted sign matches the meta-learner's
+        predicted sign. 1.0 = unanimous direction.
         """
-        stacked = self._stack_predictions(X)          # (n_samples, n_models)
-        mean    = np.abs(stacked.mean(axis=1))
-        std     = stacked.std(axis=1)
+        if not self.is_fitted:
+            raise RuntimeError("Call fit() before get_confidence().")
 
-        # Avoid divide-by-zero when mean is near 0
-        normalised_std = np.where(mean > 1e-6, std / mean, 0.0)
-        confidence     = float(np.clip(1 - normalised_std.mean(), 0.0, 1.0))
-        return confidence
+        stacked   = self._stack_predictions(X)              # (n, n_models)
+        ensemble  = self.meta_learner.predict(stacked)      # (n,)
+        agreement = (np.sign(stacked) ==
+                     np.sign(ensemble)[:, None]).mean(axis=1)
+        return float(agreement.mean())
 
     # ------------------------------------------------------------------
     # Internal
@@ -120,47 +128,30 @@ class EnsembleModel:
 
     def _stack_predictions(self, X: np.ndarray) -> np.ndarray:
         """Return (n_samples, n_models) array of base model predictions."""
-        preds = []
-        for model in self.base_models.values():
-            p = model.predict(X)
-            preds.append(p.flatten())
+        preds = [np.asarray(m.predict(X)).flatten()
+                 for m in self.base_models.values()]
         return np.column_stack(preds)
 
 
 if __name__ == "__main__":
-    import numpy as np
-    from sklearn.linear_model import LinearRegression
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.svm import SVR
-
-    np.random.seed(42)
-    n, f = 300, 18
-    X = np.random.randn(n, f)
-    y = X[:, 0] * 10 + X[:, 1] * 5 + np.random.randn(n) * 2
+    rng = np.random.default_rng(42)
+    n, f = 400, 15
+    X = rng.normal(size=(n, f))
+    # Return-scale target (~1% daily moves)
+    y = 0.004 * X[:, 0] + 0.002 * X[:, 1] + rng.normal(0, 0.01, n)
 
     split = int(0.8 * n)
-    X_train, X_test = X[:split], X[split:]
-    y_train, y_test = y[:split], y[split:]
+    ensemble = EnsembleModel()
+    ensemble.fit(X[:split], y[:split], n_splits=4)
 
-    # Pre-fit base models
-    base = {
-        'Linear Regression': LinearRegression().fit(X_train, y_train),
-        'Random Forest':     RandomForestRegressor(n_estimators=50,
-                                                   random_state=42).fit(X_train, y_train),
-        'SVR':               SVR(kernel='rbf').fit(X_train, y_train),
-    }
+    preds = ensemble.predict(X[split:])
+    conf  = ensemble.get_confidence(X[split:split + 1])
 
-    ensemble = EnsembleModel(base)
-    ensemble.fit(X_train, y_train, n_splits=3)
+    from sklearn.metrics import mean_squared_error
+    rmse    = float(np.sqrt(mean_squared_error(y[split:], preds)))
+    dir_acc = float(np.mean(np.sign(preds) == np.sign(y[split:])))
 
-    preds      = ensemble.predict(X_test)
-    confidence = ensemble.get_confidence(X_test[:1])
-
-    from sklearn.metrics import mean_squared_error, r2_score
-    rmse = np.sqrt(mean_squared_error(y_test, preds))
-    r2   = r2_score(y_test, preds)
-
-    print(f"Ensemble RMSE      : {rmse:.4f}")
-    print(f"Ensemble R²        : {r2:.4f}")
-    print(f"Confidence (1 row) : {confidence:.4f}")
+    print(f"RMSE (returns)        : {rmse:.5f}")
+    print(f"Directional accuracy  : {dir_acc:.3f}")
+    print(f"Confidence (1 row)    : {conf:.3f}")
     print("models/ensemble.py: OK")

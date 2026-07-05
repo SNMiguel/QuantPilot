@@ -51,28 +51,42 @@ class OrderManager:
             return None
 
         current_price = signal['current']
+        position      = self.broker.get_position(ticker)
 
-        # Step 2 — calculate ATR and size position
-        atr    = self.sizer.calculate_atr(price_df)
-        qty    = self.sizer.size(
-            self.portfolio.get_portfolio_value(),
-            current_price,
-            atr,
-        )
+        # Step 2 — position-aware sizing.
+        # SELL closes the actual held quantity (a cash account cannot
+        # short, and selling a freshly-sized qty would either be rejected
+        # or produce an accidental partial exit). BUY only opens a new
+        # position — no stacking onto an existing one.
+        if action == 'SELL':
+            if position is None or position['qty'] <= 0:
+                print(f"  {ticker}: SELL signal but no open position — skipping.")
+                return None
+            qty = position['qty']
+        else:  # BUY
+            if position is not None and position['qty'] > 0:
+                print(f"  {ticker}: already holding {position['qty']} shares "
+                      f"— skipping additional BUY.")
+                return None
+            atr = self.sizer.calculate_atr(price_df)
+            qty = self.sizer.size(
+                self.portfolio.get_portfolio_value(),
+                current_price,
+                atr,
+            )
+            if qty <= 0:
+                print(f"  {ticker}: position size rounded to 0 — skipping.")
+                return None
 
-        if qty <= 0:
-            print(f"  {ticker}: position size rounded to 0 — skipping.")
-            return None
-
-        # Step 3 — risk limit check
-        if not self.portfolio.is_within_limits(ticker, qty, current_price):
-            print(f"  {ticker}: blocked by risk limit — skipping.")
-            return None
+            # Step 3 — risk limit check (BUY only; SELL reduces exposure)
+            if not self.portfolio.is_within_limits(ticker, qty, current_price):
+                print(f"  {ticker}: blocked by risk limit — skipping.")
+                return None
 
         side = action.lower()   # 'buy' or 'sell'
 
         print(f"  {ticker}: {action}  {qty} shares @ ~${current_price:.2f}"
-              f"  (ATR=${atr:.2f}, confidence={signal['confidence']:.2f})")
+              f"  (confidence={signal['confidence']:.2f})")
 
         # Step 4 — dry run exits here
         if dry_run:
@@ -89,7 +103,7 @@ class OrderManager:
         try:
             order = self.broker.submit_order(ticker, qty, side)
         except Exception as e:
-            print(f"  ⚠ Order submission failed for {ticker}: {e}")
+            print(f"  WARN: Order submission failed for {ticker}: {e}")
             self.alerts.send_error(f"Order failed {ticker} {action}: {e}")
             return None
 
@@ -106,7 +120,7 @@ class OrderManager:
         # Step 7 — send Discord alert
         self.alerts.send_order_alert(ticker, action, qty, current_price)
 
-        print(f"  ✓ Order submitted: {order['id']}  status={order['status']}")
+        print(f"  Order submitted: {order['id']}  status={order['status']}")
         return order
 
 

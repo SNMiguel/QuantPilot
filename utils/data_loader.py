@@ -65,7 +65,7 @@ class StockDataLoader:
                 self.raw_data.columns = self.raw_data.columns.get_level_values(0)
             
             self.data = self.raw_data.copy()
-            print(f"✓ Downloaded {len(self.data)} data points from Yahoo Finance.")
+            print(f"Downloaded {len(self.data)} data points from Yahoo Finance.")
             return self.data
             
         except Exception as e:
@@ -73,10 +73,10 @@ class StockDataLoader:
             sys.stderr = old_stderr
             
             if use_sample_if_fails and self.ticker == "AAPL":
-                print("⚠ Unable to fetch live data. Using sample AAPL data for demonstration...")
+                print("WARN: Unable to fetch live data. Using sample AAPL data for demonstration...")
                 self.raw_data = generate_sample_aapl_data(self.start_date, self.end_date)
                 self.data = self.raw_data.copy()
-                print(f"✓ Generated {len(self.data)} sample data points.")
+                print(f"Generated {len(self.data)} sample data points.")
                 return self.data
             else:
                 raise ValueError(f"Could not download data for {self.ticker}.")

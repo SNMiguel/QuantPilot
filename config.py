@@ -37,5 +37,12 @@ SIGNAL_THRESHOLD_OVERRIDES: dict = {
     'MSFT': 0.006,   # MSFT has higher RMSE; require 0.6% move to reduce noise trades
 }
 
+# Circuit breaker: halt all new trades if portfolio drawdown from its
+# peak exceeds this fraction. Requires manual review to resume.
+MAX_DRAWDOWN_HALT: float = 0.10
+
+# Backtest slippage assumption, in basis points of the fill price.
+SLIPPAGE_BPS: float = 5.0
+
 # --- Model registry ---
 MODEL_REGISTRY_PATH: str = "models/saved/registry.json"

@@ -1,8 +1,7 @@
 # Streamlit Cloud dashboard — excludes tensorflow (not needed for display)
 pandas>=2.0
 numpy>=1.24
-matplotlib>=3.7
-seaborn>=0.13
+altair>=5.0
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
 alpaca-trade-api>=3.0.0

@@ -26,3 +26,6 @@ streamlit>=1.30
 
 # HTTP (used by alerts)
 requests>=2.31
+
+# Testing
+pytest>=8.0

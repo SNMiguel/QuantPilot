@@ -6,7 +6,7 @@ All versions are tracked in a JSON manifest at MODEL_REGISTRY_PATH.
 import os
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import joblib
 import numpy as np
@@ -36,7 +36,7 @@ class ModelRegistry:
     # ------------------------------------------------------------------
 
     def save(self, model, name: str, metrics: dict,
-             framework: str = 'sklearn') -> str:
+             framework: str = 'sklearn', meta: dict = None) -> str:
         """
         Persist a trained model and record it in the manifest.
 
@@ -45,12 +45,15 @@ class ModelRegistry:
             name:      Logical name e.g. 'ensemble_AAPL'.
             metrics:   Dict of evaluation metrics e.g. {'rmse': 3.2, 'r2': 0.95}
             framework: 'sklearn' or 'keras'
+            meta:      Optional metadata dict, e.g. {'target': 'next_return',
+                       'n_features': 16}. Used by load_latest() filters so a
+                       job never loads a model trained for a different target.
 
         Returns:
             version_id string (uuid4)
         """
         version_id = str(uuid.uuid4())[:8]
-        timestamp  = datetime.utcnow().isoformat()
+        timestamp  = datetime.now(timezone.utc).isoformat()
 
         if framework == 'keras':
             path = os.path.join(self.registry_dir, f"{version_id}.keras")
@@ -66,11 +69,12 @@ class ModelRegistry:
             'metrics':    metrics,
             'framework':  framework,
             'timestamp':  timestamp,
+            'meta':       meta or {},
         }
         self.manifest.append(entry)
         self._save_manifest()
 
-        print(f"✓ Model saved: {name} [{version_id}]  metrics={metrics}")
+        print(f"Model saved: {name} [{version_id}]  metrics={metrics}")
         return version_id
 
     # ------------------------------------------------------------------
@@ -104,6 +108,42 @@ class ModelRegistry:
         if model is None:
             return None, None
         return model, best
+
+    def load_latest(self, name_prefix: str, require_meta: dict = None):
+        """
+        Load the most recently saved model matching a name prefix.
+
+        Promotion is decided at train time by comparing incumbent and
+        challenger on the SAME test window, so "latest saved" is by
+        construction the best available model — unlike load_best(),
+        which compares metric values measured on different windows.
+
+        Args:
+            name_prefix:  e.g. 'ensemble_AAPL'.
+            require_meta: If set, only consider entries whose meta dict
+                          contains all these key/value pairs, e.g.
+                          {'target': 'next_return'}. Prevents loading a
+                          model trained against an incompatible target.
+
+        Returns:
+            (model, entry_dict) tuple, or (None, None) if no match.
+        """
+        candidates = [e for e in self.manifest
+                      if e['name'].startswith(name_prefix)]
+        if require_meta:
+            candidates = [
+                e for e in candidates
+                if all(e.get('meta', {}).get(k) == v
+                       for k, v in require_meta.items())
+            ]
+        if not candidates:
+            return None, None
+
+        latest = max(candidates, key=lambda e: e['timestamp'])
+        model  = self._load_model(latest)
+        if model is None:
+            return None, None
+        return model, latest
 
     def load_version(self, version_id: str):
         """Load a specific model version by its version_id."""

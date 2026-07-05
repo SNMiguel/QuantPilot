@@ -45,7 +45,7 @@ class Portfolio:
                 for p in positions
             }
         except Exception as e:
-            print(f"⚠ Could not fetch positions: {e}")
+            print(f"WARN: Could not fetch positions: {e}")
             return {}
 
     def get_portfolio_value(self) -> float:
@@ -58,7 +58,7 @@ class Portfolio:
         try:
             return self.feed.get_account()['equity']
         except Exception as e:
-            print(f"⚠ Could not fetch portfolio value: {e}")
+            print(f"WARN: Could not fetch portfolio value: {e}")
             return 0.0
 
     # ------------------------------------------------------------------
@@ -93,7 +93,7 @@ class Portfolio:
         pct = total_exposure / portfolio_value
 
         if pct > config.MAX_POSITION_PCT:
-            print(f"  ⚠ Risk limit: {ticker} exposure would be "
+            print(f"  WARN: Risk limit: {ticker} exposure would be "
                   f"{pct*100:.1f}% > {config.MAX_POSITION_PCT*100:.0f}% cap")
             return False
 

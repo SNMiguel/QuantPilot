@@ -95,7 +95,7 @@ class NeuralNetworkModel:
             metrics=['mae', 'mse']
         )
         
-        print(f"✓ Built {architecture} neural network")
+        print(f"Built {architecture} neural network")
         return self.model
     
     def prepare_data(self, X, y, test_size=0.2, validation_split=0.1):
@@ -170,7 +170,7 @@ class NeuralNetworkModel:
         )
         
         print("="*50)
-        print("✓ Neural Network training complete!")
+        print("Neural Network training complete!")
         
         return self.history
     
@@ -206,7 +206,7 @@ class NeuralNetworkModel:
         
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         self.model.save(filepath)
-        print(f"✓ Model saved to {filepath}")
+        print(f"Model saved to {filepath}")
     
     def load_model(self, filepath='models/saved/neural_network.keras'):
         """Load a previously saved model."""
@@ -214,7 +214,7 @@ class NeuralNetworkModel:
             raise FileNotFoundError(f"Model file not found: {filepath}")
         
         self.model = keras.models.load_model(filepath)
-        print(f"✓ Model loaded from {filepath}")
+        print(f"Model loaded from {filepath}")
         return self.model
     
     def get_model_summary(self):
@@ -257,4 +257,4 @@ if __name__ == "__main__":
     # Make predictions
     predictions = nn_model.predict(X_test[:5])
     print("Sample predictions:", predictions)
-    print("\n✓ Neural Network test complete!")
+    print("\nNeural Network test complete!")

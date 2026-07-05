@@ -28,6 +28,24 @@ class SignalGenerator:
                                     if confidence_threshold is not None \
                                     else config.CONFIDENCE_THRESHOLD
 
+    def generate_from_return(self, current_price: float,
+                             predicted_return: float,
+                             confidence: float) -> dict:
+        """
+        Generate a signal from a predicted NEXT-DAY RETURN (the native
+        output of the ensemble, e.g. 0.004 = +0.4%).
+
+        Args:
+            current_price:    Most recent close price.
+            predicted_return: Model's predicted next-day simple return.
+            confidence:       Ensemble confidence score in [0, 1].
+
+        Returns:
+            Same dict as generate().
+        """
+        predicted_price = current_price * (1.0 + predicted_return)
+        return self.generate(current_price, predicted_price, confidence)
+
     def generate(self, current_price: float,
                  predicted_price: float,
                  confidence: float) -> dict:

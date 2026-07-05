@@ -64,7 +64,7 @@ class Database:
     def create_tables(self) -> None:
         """Create all tables if they don't exist. Safe to call repeatedly."""
         self.metadata.create_all(self.engine)
-        print("✓ Database tables ready.")
+        print("Database tables ready.")
 
     # ------------------------------------------------------------------
     # Price bars
@@ -143,6 +143,42 @@ class Database:
                              parse_dates=['date'],
                              index_col='date')
         return df
+
+    # ------------------------------------------------------------------
+    # Predictions
+    # ------------------------------------------------------------------
+
+    def upsert_prediction(self, date: str, ticker: str, model_version: str,
+                          predicted_price: float, signal: str,
+                          confidence: float) -> None:
+        """Record the daily model prediction and generated signal."""
+        stmt = pg_insert(self.predictions_table).values(
+            ticker=ticker,
+            date=date,
+            model_version=model_version,
+            predicted_price=predicted_price,
+            signal=signal,
+            confidence=confidence,
+        ).on_conflict_do_update(
+            index_elements=['ticker', 'date', 'model_version'],
+            set_={'predicted_price': predicted_price,
+                  'signal': signal,
+                  'confidence': confidence},
+        )
+        with self.engine.begin() as conn:
+            conn.execute(stmt)
+
+    def get_latest_predictions(self) -> pd.DataFrame:
+        """Return the most recent prediction row per ticker."""
+        query = text("""
+            SELECT DISTINCT ON (ticker)
+                   ticker, date, model_version,
+                   predicted_price, signal, confidence
+            FROM predictions
+            ORDER BY ticker, date DESC
+        """)
+        with self.engine.connect() as conn:
+            return pd.read_sql(query, conn, parse_dates=['date'])
 
     # ------------------------------------------------------------------
     # Trades

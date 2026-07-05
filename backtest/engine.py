@@ -2,10 +2,11 @@
 Event-driven backtester.
 
 Iterates over historical dates chronologically. At each step:
-  1. Compute features using only data up to that date (no leakage)
-  2. Generate a signal from the loaded model
+  1. Compute features using only data up to that date (no leakage) —
+     the same get_latest_features() path the live daily job uses
+  2. Predict the next-day return and generate a signal
   3. Simulate fill at the NEXT day's open price
-  4. Apply commission
+  4. Apply commission and slippage
   5. Track portfolio value, cash, and position
 
 Returns an equity curve DataFrame that backtest/report.py uses
@@ -14,7 +15,7 @@ to compute financial metrics.
 import numpy as np
 import pandas as pd
 
-from features.walk_forward import get_features_at
+from features.walk_forward import get_latest_features
 from features.sentiment_features import merge_sentiment
 
 
@@ -23,17 +24,21 @@ class BacktestEngine:
 
     def __init__(self, commission_per_share: float = 0.01,
                  initial_capital: float = 100_000.0,
-                 stop_loss_pct: float = 0.02):
+                 stop_loss_pct: float = 0.02,
+                 slippage_bps: float = 5.0):
         """
         Args:
             commission_per_share: Cost per share traded (default $0.01).
             initial_capital:      Starting portfolio cash (default $100,000).
             stop_loss_pct:        Exit long position if price drops this far
                                   below entry (default 2%).
+            slippage_bps:         Adverse fill assumption in basis points —
+                                  buys fill above the open, sells below.
         """
         self.commission_per_share = commission_per_share
         self.initial_capital      = initial_capital
         self.stop_loss_pct        = stop_loss_pct
+        self.slippage_bps         = slippage_bps
 
     def run(self, df: pd.DataFrame,
             sentiment_df: pd.DataFrame,
@@ -48,7 +53,7 @@ class BacktestEngine:
                           Must cover at least 60 rows (rolling window warmup).
             sentiment_df: Sentiment scores DataFrame (date index, 'score' col).
                           Can be empty.
-            model:        Any object with .predict(X) -> ndarray.
+            model:        Predicts NEXT-DAY RETURNS: .predict(X) -> ndarray.
                           If it has .get_confidence(X), that is used;
                           otherwise confidence defaults to 0.7.
             signal_gen:   SignalGenerator instance.
@@ -60,13 +65,14 @@ class BacktestEngine:
                 trade_side, trade_qty, trade_price
             One row per trading day in the backtest window.
         """
-        dates   = df.index
-        n       = len(dates)
-        warmup  = 55   # minimum rows needed for all indicators (MA_50 = 50)
+        dates  = df.index
+        n      = len(dates)
+        warmup = 60   # indicator warmup (MA_50) plus a small margin
 
         cash     = self.initial_capital
-        position = 0       # shares held (positive = long, negative = short)
+        position = 0       # shares held (long only)
         entry_px = 0.0     # price at which current position was opened
+        slip     = self.slippage_bps / 10_000.0
 
         records = []
 
@@ -76,34 +82,25 @@ class BacktestEngine:
             today_str = today.strftime('%Y-%m-%d')
 
             # Features up to and including today (no future leakage)
-            X, y, feat_dates = get_features_at(df, today_str)
-
-            if len(X) == 0:
+            feature_df = get_latest_features(df, today_str)
+            if feature_df.empty:
                 continue
+            feature_df = merge_sentiment(feature_df, sentiment_df)
 
-            # Merge sentiment
-            n_features = X.shape[1]
-            feat_df    = pd.DataFrame(
-                X, index=feat_dates,
-                columns=[f'f{j}' for j in range(n_features)]
-            )
-            feat_df = merge_sentiment(feat_df, sentiment_df)
-            X_merged = feat_df.values
+            # Predict next-day return on today's row
+            X_today = feature_df.values[-1:].reshape(1, -1)
+            predicted_return = float(model.predict(X_today)[0])
 
-            # Predict using last row (today)
-            X_today = X_merged[-1:].reshape(1, -1)
-            predicted = float(model.predict(X_today)[0])
-
-            # Confidence
             if hasattr(model, 'get_confidence'):
                 confidence = model.get_confidence(X_today)
             else:
                 confidence = 0.7
 
             current_price = float(df.loc[today, 'Close'])
-            fill_price    = float(df.loc[tomorrow, 'Open'])
+            open_price    = float(df.loc[tomorrow, 'Open'])
 
-            signal = signal_gen.generate(current_price, predicted, confidence)
+            signal = signal_gen.generate_from_return(
+                current_price, predicted_return, confidence)
             action = signal['signal']
 
             # Stop-loss overrides signal
@@ -117,9 +114,10 @@ class BacktestEngine:
 
             # --- Execute signal ---
             if action == 'BUY' and position == 0:
-                atr      = sizer.calculate_atr(df.loc[:today])
-                pv       = cash + position * current_price
-                qty      = sizer.size(pv, current_price, atr)
+                fill_price = open_price * (1 + slip)
+                atr        = sizer.calculate_atr(df.loc[:today])
+                pv         = cash + position * current_price
+                qty        = sizer.size(pv, current_price, atr)
 
                 if qty > 0:
                     cost       = qty * fill_price
@@ -134,6 +132,7 @@ class BacktestEngine:
                         trade_px   = fill_price
 
             elif action == 'SELL' and position > 0:
+                fill_price = open_price * (1 - slip)
                 qty        = position
                 proceeds   = qty * fill_price
                 commission = qty * self.commission_per_share
@@ -145,7 +144,7 @@ class BacktestEngine:
                 trade_qty  = qty
                 trade_px   = fill_price
 
-            portfolio_value = cash + position * fill_price
+            portfolio_value = cash + position * open_price
 
             records.append({
                 'date':            tomorrow,
@@ -165,5 +164,5 @@ class BacktestEngine:
 
 
 if __name__ == "__main__":
-    print("BacktestEngine tested via jobs/backtest_job.py")
+    print("BacktestEngine tested via jobs/backtest_job.py and tests/")
     print("backtest/engine.py: OK")

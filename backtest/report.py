@@ -20,7 +20,8 @@ sns.set_style("whitegrid")
 
 def generate(equity_curve: pd.DataFrame,
              ticker: str = '',
-             save_dir: str = 'results') -> dict:
+             save_dir: str = 'results',
+             price_df: pd.DataFrame = None) -> dict:
     """
     Generate a full backtest report.
 
@@ -30,6 +31,10 @@ def generate(equity_curve: pd.DataFrame,
                       trade_qty, trade_price.
         ticker:       Ticker label for the chart title.
         save_dir:     Directory to save the equity curve PNG.
+        price_df:     Raw OHLCV DataFrame for the same period. When given,
+                      a buy-and-hold baseline is computed — a strategy
+                      that cannot beat simply holding the stock has no
+                      edge, whatever its other metrics say.
 
     Returns:
         dict of computed metrics.
@@ -37,7 +42,7 @@ def generate(equity_curve: pd.DataFrame,
     os.makedirs(save_dir, exist_ok=True)
 
     if equity_curve.empty:
-        print("⚠ Empty equity curve — no trades were made.")
+        print("WARN: empty equity curve — no trades were made.")
         return {}
 
     # ------------------------------------------------------------------
@@ -80,6 +85,20 @@ def generate(equity_curve: pd.DataFrame,
     }
 
     # ------------------------------------------------------------------
+    # Buy-and-hold baseline on the same window
+    # ------------------------------------------------------------------
+    bh_curve = None
+    if price_df is not None and not price_df.empty:
+        closes = price_df['Close'].reindex(equity_curve.index).ffill()
+        if closes.notna().all() and float(closes.iloc[0]) > 0:
+            bh_curve = initial * closes / float(closes.iloc[0])
+            bh_return = (float(bh_curve.iloc[-1]) - initial) / initial * 100
+            bh_returns = np.diff(bh_curve.values) / bh_curve.values[:-1]
+            metrics['buy_hold_return_pct'] = round(bh_return, 2)
+            metrics['buy_hold_sharpe']     = round(sharpe_ratio(bh_returns), 4)
+            metrics['beats_buy_hold']      = bool(total_return > bh_return)
+
+    # ------------------------------------------------------------------
     # Print summary
     # ------------------------------------------------------------------
     _print_summary(metrics, ticker)
@@ -88,7 +107,8 @@ def generate(equity_curve: pd.DataFrame,
     # Plot equity curve
     # ------------------------------------------------------------------
     save_path = os.path.join(save_dir, 'backtest_equity_curve.png')
-    _plot_equity_curve(equity_curve, metrics, ticker, save_path)
+    _plot_equity_curve(equity_curve, metrics, ticker, save_path,
+                       bh_curve=bh_curve)
 
     return metrics
 
@@ -130,11 +150,19 @@ def _print_summary(metrics: dict, ticker: str) -> None:
     print(f"  Profit Factor    : {metrics['profit_factor']:>8.4f}")
     print(f"  Trades           : {metrics['n_trades']:>8}")
     print(f"  Final Value      : ${metrics['final_value']:>12,.2f}")
+    if 'buy_hold_return_pct' in metrics:
+        verdict = 'strategy wins' if metrics['beats_buy_hold'] \
+                  else 'buy-and-hold wins'
+        print(f"  {'-'*51}")
+        print(f"  Buy & Hold Return: {metrics['buy_hold_return_pct']:>8.2f}%"
+              f"   ({verdict})")
+        print(f"  Buy & Hold Sharpe: {metrics['buy_hold_sharpe']:>8.4f}")
     print(f"{'='*55}\n")
 
 
 def _plot_equity_curve(equity_curve: pd.DataFrame, metrics: dict,
-                       ticker: str, save_path: str) -> None:
+                       ticker: str, save_path: str,
+                       bh_curve: pd.Series = None) -> None:
     fig, axes = plt.subplots(2, 1, figsize=(14, 8),
                               gridspec_kw={'height_ratios': [3, 1]})
 
@@ -142,6 +170,10 @@ def _plot_equity_curve(equity_curve: pd.DataFrame, metrics: dict,
     ax = axes[0]
     ax.plot(equity_curve.index, equity_curve['portfolio_value'],
             color='#2E86AB', linewidth=1.8, label='Portfolio Value')
+    if bh_curve is not None:
+        ax.plot(bh_curve.index, bh_curve.values,
+                color='#F18F01', linewidth=1.4, alpha=0.8,
+                linestyle='-.', label='Buy & Hold')
     ax.axhline(y=100_000, color='grey', linestyle='--',
                linewidth=1, alpha=0.6, label='Initial Capital')
 

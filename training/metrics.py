@@ -28,6 +28,30 @@ def sharpe_ratio(returns: np.ndarray,
     return float(np.mean(excess) / std * np.sqrt(252))
 
 
+def directional_accuracy(y_true: np.ndarray,
+                         y_pred: np.ndarray) -> float:
+    """
+    Fraction of predictions with the correct sign.
+
+    The honest headline metric for a return forecaster: a coin flip
+    scores ~0.50, so anything sustainably above ~0.53 on unseen data
+    is meaningful. RMSE alone can look flattering while the model gets
+    the direction wrong.
+
+    Args:
+        y_true: Realised returns.
+        y_pred: Predicted returns.
+
+    Returns:
+        Accuracy in [0, 1]. Returns 0.0 for empty input.
+    """
+    y_true = np.asarray(y_true).flatten()
+    y_pred = np.asarray(y_pred).flatten()
+    if len(y_true) == 0:
+        return 0.0
+    return float(np.mean(np.sign(y_pred) == np.sign(y_true)))
+
+
 def max_drawdown(equity_curve: np.ndarray) -> float:
     """
     Maximum drawdown — largest peak-to-trough decline.
@@ -110,6 +134,8 @@ if __name__ == "__main__":
         'pnl': np.random.normal(50, 200, 50)
     })
 
+    preds = returns + np.random.normal(0, 0.01, 252)
+    print(f"Dir. accuracy : {directional_accuracy(returns, preds):.4f}")
     print(f"Sharpe ratio  : {sharpe_ratio(returns):.4f}")
     print(f"Max drawdown  : {max_drawdown(equity_curve):.4f}")
     print(f"Calmar ratio  : {calmar_ratio(returns, equity_curve):.4f}")

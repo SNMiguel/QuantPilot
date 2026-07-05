@@ -70,7 +70,7 @@ class NewsSentiment:
                 for a in articles
             ]
         except Exception as e:
-            print(f"⚠ NewsAPI fetch failed for {ticker} on {date}: {e}")
+            print(f"WARN: NewsAPI fetch failed for {ticker} on {date}: {e}")
             return []
 
     # ------------------------------------------------------------------

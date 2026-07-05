@@ -35,7 +35,7 @@ def run_backtest(ticker: str, start: str, end: str) -> dict:
     sentiment_df = db.get_sentiment(ticker, start, end)
 
     if df.empty:
-        print(f"⚠ No data for {ticker}. Aborting.")
+        print(f"WARN: No data for {ticker}. Aborting.")
         return {}
 
     print(f"  {len(df)} rows  |  "
@@ -43,34 +43,36 @@ def run_backtest(ticker: str, start: str, end: str) -> dict:
 
     # --- Model ---
     registry = ModelRegistry()
-    model, meta = registry.load_best('rmse',
-                                     name_prefix=f'ensemble_{ticker}')
+    model, meta = registry.load_latest(f'ensemble_{ticker}',
+                                       require_meta={'target': 'next_return'})
     if model is None:
-        print(f"⚠ No trained model found for {ticker}. "
+        print(f"WARN: no next-return model found for {ticker}. "
               f"Run train_job.py first.")
         return {}
 
-    print(f"  Model: ensemble_{ticker}  "
-          f"RMSE=${meta['metrics']['rmse']:.4f}")
+    print(f"  Model: ensemble_{ticker} [{meta['version_id']}]  "
+          f"RMSE={meta['metrics']['rmse']:.5f}  "
+          f"dir_acc={meta['metrics'].get('dir_acc', 0):.3f}")
 
     # --- Components ---
     threshold  = config.SIGNAL_THRESHOLD_OVERRIDES.get(ticker, config.SIGNAL_THRESHOLD)
     signal_gen = SignalGenerator(threshold=threshold)
     sizer      = PositionSizer()
     engine     = BacktestEngine(commission_per_share=0.01,
-                                initial_capital=100_000.0)
+                                initial_capital=100_000.0,
+                                slippage_bps=config.SLIPPAGE_BPS)
 
     # --- Run ---
     print(f"\nRunning backtest...")
     equity_curve = engine.run(df, sentiment_df, model, signal_gen, sizer)
 
     if equity_curve.empty:
-        print("⚠ No trades were generated. "
+        print("WARN: no trades were generated. "
               "Try loosening SIGNAL_THRESHOLD or CONFIDENCE_THRESHOLD.")
         return {}
 
-    # --- Report ---
-    metrics = generate_report(equity_curve, ticker=ticker)
+    # --- Report (price_df enables the buy-and-hold baseline) ---
+    metrics = generate_report(equity_curve, ticker=ticker, price_df=df)
     return metrics
 
 

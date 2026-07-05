@@ -50,7 +50,7 @@ class TraditionalModels:
         model = LinearRegression()
         model.fit(X_train, y_train)
         self.models['Linear Regression'] = model
-        print("✓ Linear Regression trained.")
+        print("Linear Regression trained.")
         return model
     
     def train_random_forest(self, X_train, y_train, n_estimators=100):
@@ -66,7 +66,7 @@ class TraditionalModels:
         )
         model.fit(X_train, y_train)
         self.models['Random Forest'] = model
-        print("✓ Random Forest trained.")
+        print("Random Forest trained.")
         return model
     
     def train_svr(self, X_train, y_train):
@@ -80,7 +80,7 @@ class TraditionalModels:
         )
         model.fit(X_train, y_train)
         self.models['SVR'] = model
-        print("✓ SVR trained.")
+        print("SVR trained.")
         return model
     
     def train_all(self, X_train, y_train):
@@ -94,7 +94,7 @@ class TraditionalModels:
         self.train_svr(X_train, y_train)
         
         print("="*50)
-        print(f"✓ All {len(self.models)} models trained successfully!")
+        print(f"All {len(self.models)} models trained successfully!")
         print("="*50 + "\n")
     
     def predict(self, model_name, X):
@@ -119,13 +119,13 @@ class TraditionalModels:
         for name, model in self.models.items():
             filename = f"{directory}/{name.replace(' ', '_').lower()}.joblib"
             joblib.dump(model, filename)
-            print(f"✓ Saved {name} to {filename}")
+            print(f"Saved {name} to {filename}")
         
         # Save scaler if data was scaled
         if self.is_scaled:
             scaler_path = f"{directory}/scaler.joblib"
             joblib.dump(self.scaler, scaler_path)
-            print(f"✓ Saved scaler to {scaler_path}")
+            print(f"Saved scaler to {scaler_path}")
     
     def load_models(self, directory='models/saved'):
         """Load previously saved models."""
@@ -141,14 +141,14 @@ class TraditionalModels:
             filepath = f"{directory}/{filename}"
             if os.path.exists(filepath):
                 self.models[name] = joblib.load(filepath)
-                print(f"✓ Loaded {name}")
+                print(f"Loaded {name}")
         
         # Load scaler if exists
         scaler_path = f"{directory}/scaler.joblib"
         if os.path.exists(scaler_path):
             self.scaler = joblib.load(scaler_path)
             self.is_scaled = True
-            print(f"✓ Loaded scaler")
+            print(f"Loaded scaler")
 
 
 if __name__ == "__main__":
@@ -176,4 +176,4 @@ if __name__ == "__main__":
     for name, preds in predictions.items():
         print(f"{name}: {preds[:5]}")
     
-    print("\n✓ Traditional models test complete!")
+    print("\nTraditional models test complete!")

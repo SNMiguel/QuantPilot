@@ -3,8 +3,9 @@ Weekly model retrain job.
 
 For each ticker in WATCHLIST:
   1. Pull full price + sentiment history from DB
-  2. Run WalkForwardTrainer (5-fold expanding window)
-  3. Save model to registry only if RMSE improved vs current best
+  2. Run WalkForwardTrainer (5-fold expanding window, next-day return target)
+  3. Promote to registry only if the challenger beats the incumbent
+     on the same held-out window
   4. Send Discord retrain summary
 
 Usage:
@@ -40,7 +41,7 @@ def train_ticker(ticker: str, db: Database, feed: AlpacaFeed,
     sentiment_df = db.get_sentiment(ticker, start, end)
 
     if df.empty:
-        print(f"  ⚠ No price data for {ticker} — skipping")
+        print(f"  WARN: No price data for {ticker} — skipping")
         return {}
 
     print(f"  {len(df)} price rows  |  {len(sentiment_df)} sentiment rows")
@@ -51,11 +52,12 @@ def train_ticker(ticker: str, db: Database, feed: AlpacaFeed,
     metrics = trainer.train(df, sentiment_df, ticker=ticker)
 
     if not metrics:
-        print(f"  ⚠ Training returned no metrics for {ticker}")
+        print(f"  WARN: Training returned no metrics for {ticker}")
         return {}
 
-    print(f"  ✓ RMSE: ${metrics.get('rmse', 0):.4f}  "
-          f"R²: {metrics.get('r2', 0):.4f}")
+    print(f"  RMSE: {metrics.get('rmse', 0):.5f} (return units)  "
+          f"dir_acc: {metrics.get('dir_acc', 0):.3f}  "
+          f"R2: {metrics.get('r2', 0):.4f}")
     return metrics
 
 
@@ -83,7 +85,7 @@ def run(tickers: list[str] | None = None) -> None:
 
         if all_metrics:
             alerter.send_retrain_summary(all_metrics)
-            print("\n✓ Discord retrain summary sent")
+            print("\nDiscord retrain summary sent")
 
         print(f"\n{'='*55}")
         print("  Train job complete")
@@ -91,7 +93,7 @@ def run(tickers: list[str] | None = None) -> None:
 
     except Exception as exc:
         msg = f"train_job failed: {exc}\n{traceback.format_exc()}"
-        print(f"\n🚨 {msg}")
+        print(f"\nERROR: {msg}")
         alerter.send_error(msg)
         raise
 

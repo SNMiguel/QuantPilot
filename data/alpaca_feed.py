@@ -83,7 +83,7 @@ class AlpacaFeed:
             return df
 
         except Exception as e:
-            print(f"⚠ Alpaca fetch failed for {ticker}: {e}")
+            print(f"WARN: Alpaca fetch failed for {ticker}: {e}")
             print("  Falling back to yfinance...")
             return self._yfinance_fallback(ticker, start, end, db)
 
@@ -99,7 +99,7 @@ class AlpacaFeed:
                           progress=False, auto_adjust=True)
 
         if raw.empty:
-            print(f"  ⚠ yfinance returned no data for {ticker}")
+            print(f"  WARN: yfinance returned no data for {ticker}")
             return pd.DataFrame(columns=['Open', 'High', 'Low', 'Close', 'Volume'])
 
         # Flatten MultiIndex columns (newer yfinance versions)

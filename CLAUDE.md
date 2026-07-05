@@ -10,39 +10,76 @@ python -m venv venv
 source venv/Scripts/activate   # Windows Git Bash
 pip install -r requirements.txt
 
-# Run the full pipeline
-python main.py
+# Run the test suite (fully synthetic — no API keys, DB, or tensorflow needed)
+python -m pytest tests/ -v
 
-# Run individual modules for testing
-python utils/data_loader.py
-python models/neural_network.py
-python models/model_comparison.py
+# Jobs (require .env with Alpaca/Neon/NewsAPI credentials)
+python -m jobs.train_job                 # weekly retrain, all tickers
+python -m jobs.train_job --ticker AAPL   # single ticker
+python -m jobs.daily_job                 # full daily trade cycle
+python -m jobs.backtest_job --ticker AAPL --start 2024-01-01
+
+# Dashboard
+streamlit run monitoring/dashboard.py
+
+# Legacy demo (original 80/20 price-prediction comparison; not the production path)
+python main.py
 ```
 
-There is no test suite — each module has an `if __name__ == "__main__":` block that can be run directly to exercise it in isolation.
+Most modules also have an `if __name__ == "__main__":` block for isolated smoke-testing.
 
 ## Architecture
 
-The pipeline runs sequentially in `main.py`:
+Production pipeline (jobs/ orchestrates everything):
 
-1. **Data ingestion** (`utils/data_loader.py` → `StockDataLoader`)  
-   Downloads AAPL OHLCV data via `yfinance`. Falls back to `utils/sample_data.py` (synthetic data generator) if the network call fails. After downloading, `add_technical_indicators()` computes 18 derived columns in-place on `self.data`, then `prepare_features()` drops raw OHLCV columns and returns `(X, y, dates)`.
+1. **Data** — `data/alpaca_feed.py` (prices, DB-cached), `data/news_sentiment.py`
+   (NewsAPI + VADER), `data/database.py` (Neon PostgreSQL via SQLAlchemy Core).
+2. **Features** — `features/walk_forward.py` is the single source of truth:
+   - `get_features_at(df, cutoff)` returns `(X, y, dates)` for TRAINING where
+     **y is the next-day simple return** and the last row is dropped.
+   - `get_latest_features(df, cutoff)` returns the feature DataFrame for
+     PREDICTION, keeping the cutoff row.
+   - Features are stationary transforms (ratios/returns), listed in
+     `FEATURE_COLUMNS`; `features/sentiment_features.py` appends one trailing
+     `sentiment` column.
+3. **Models** — `models/ensemble.py`: LR/RF/SVR base models (see
+   `make_base_models()`; SVR epsilon is tuned for return scale) stacked with a
+   Ridge meta-learner fit on `TimeSeriesSplit` out-of-fold predictions, then
+   base models are refit on the full window. Confidence = fraction of base
+   models agreeing with the ensemble's direction. The Keras LSTM in
+   `models/neural_network.py` is experimental and NOT in the production ensemble.
+4. **Training** — `training/walk_forward_trainer.py` validates the ensemble
+   itself across expanding-window folds, then retrains and promotes to
+   `models/registry.py` only if the challenger beats the incumbent **on the
+   same held-out window**. Every save is stamped `meta={'target': 'next_return',
+   'n_features': ...}`.
+5. **Signals/risk/execution** — `signals/generator.py`
+   (`generate_from_return()` is the native entry point), `risk/position_sizer.py`
+   (ATR sizing + 15% cap), `risk/portfolio.py`, `execution/order_manager.py`
+   (position-aware: SELL closes the held qty, BUY never stacks),
+   `execution/alpaca_broker.py`.
+6. **Backtest** — `backtest/engine.py` (next-day-open fills, commission,
+   slippage, stop-loss) and `backtest/report.py` (metrics + buy-and-hold
+   baseline when given `price_df`).
 
-2. **Train/test split** (`main.py`)  
-   Chronological 80/20 split — no shuffling, to avoid time-series leakage.
+## Critical invariants (tests enforce these)
 
-3. **Model training** (`models/model_comparison.py` → `ModelComparison`)  
-   - `models/linear_regression.py` (`TraditionalModels`): wraps scikit-learn Linear Regression, Random Forest, and SVR. Each model is stored in `self.models` dict after fitting.  
-   - `models/neural_network.py` (`NeuralNetworkModel`): Keras Sequential model. Features are scaled with `StandardScaler` (fit on train, transform on test) before passing to the network. Three architecture variants exist: `'standard'` (default), `'deep'`, `'wide'`.
+- Model outputs are **next-day returns**, never prices. Jobs must load models
+  via `registry.load_latest(prefix, require_meta={'target': 'next_return'})` —
+  treating a legacy price-level model's output as a return would be catastrophic.
+- Feature/target alignment: `y[t] == close[t+1]/close[t] - 1`. Never let a
+  same-day price level into the feature matrix (that was the original leakage bug).
+- Ensemble stacking must use `TimeSeriesSplit` (KFold leaks the future into
+  OOF predictions) and must refit base models on the full window afterwards.
+- The daily job checks `broker.market_traded_today()` (calendar), NOT
+  `is_market_open()` (clock) — it runs after the close.
+- No emojis in code, output, or docs (owner preference).
+- `models/__init__.py` must keep tensorflow imports optional; tests and the
+  dashboard run without it.
 
-4. **Evaluation** (`utils/evaluation.py` → `ModelEvaluator`)  
-   Calculates MAE, RMSE, R², MAPE. Results are stored inside `ModelComparison.results` keyed by model name. `get_best_model()` selects by lowest RMSE.
+## Style
 
-5. **Visualization**  
-   Plots are written to `results/` (created if absent). `ModelEvaluator` provides `plot_predictions()`, `plot_residuals()`, and `compare_models()`.
-
-## Key design decisions
-
-- The `NeuralNetworkModel` owns its own `StandardScaler`. Scaling happens inside `ModelComparison`, not inside `StockDataLoader`, so traditional models receive raw feature values while the NN receives scaled values.
-- `StockDataLoader.prepare_features()` excludes `['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']` from `X` — the target `y` is the raw `Close` price.
-- Changing the ticker or date range is done by modifying the `StockDataLoader(...)` call in `main.py`. Sample-data fallback only activates for `ticker="AAPL"`.
+- Aligned assignment blocks and section-divider comments follow the existing
+  files; match them.
+- Metrics vocabulary: RMSE/MAE in return units, plus `dir_acc` (directional
+  accuracy, 0.5 = coin flip). Don't report MAPE on returns (division by ~0).

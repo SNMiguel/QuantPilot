@@ -63,9 +63,9 @@ class AlpacaBroker:
         """Cancel all open orders. Called at the start of each daily job."""
         try:
             self.api.cancel_all_orders()
-            print("  ✓ Stale orders cleared.")
+            print("  Stale orders cleared.")
         except Exception as e:
-            print(f"  ⚠ Could not cancel orders: {e}")
+            print(f"  WARN: Could not cancel orders: {e}")
 
     # ------------------------------------------------------------------
     # Positions
@@ -99,7 +99,28 @@ class AlpacaBroker:
         try:
             return self.api.get_clock().is_open
         except Exception as e:
-            print(f"  ⚠ Could not check market status: {e}")
+            print(f"  WARN: could not check market status: {e}")
+            return False
+
+    def market_traded_today(self) -> bool:
+        """
+        Return True if today is (or was) a trading day.
+
+        The daily job runs AFTER the 4 PM ET close, when is_market_open()
+        is always False — using the clock there would skip every session.
+        The calendar endpoint answers the question actually being asked:
+        "did the market trade today?" Market orders submitted after the
+        close queue for the next session's open.
+        """
+        try:
+            from datetime import date
+            today = date.today().isoformat()
+            calendar = self.api.get_calendar(start=today, end=today)
+            return len(calendar) > 0 and \
+                str(calendar[0].date.date() if hasattr(calendar[0].date, 'date')
+                    else calendar[0].date) == today
+        except Exception as e:
+            print(f"  WARN: could not check market calendar: {e}")
             return False
 
 

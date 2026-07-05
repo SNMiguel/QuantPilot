@@ -37,9 +37,9 @@ def main():
     # Prepare features
     X, y, dates = loader.prepare_features()
     
-    print(f"✓ Data prepared: {X.shape[0]} samples, {X.shape[1]} features")
-    print(f"✓ Price range: ${y.min():.2f} - ${y.max():.2f}")
-    print(f"✓ Features: {', '.join(loader.feature_names[:5])}... (and {len(loader.feature_names)-5} more)")
+    print(f"Data prepared: {X.shape[0]} samples, {X.shape[1]} features")
+    print(f"Price range: ${y.min():.2f} - ${y.max():.2f}")
+    print(f"Features: {', '.join(loader.feature_names[:5])}... (and {len(loader.feature_names)-5} more)")
     
     # Step 2: Split data (80% train, 20% test)
     print("\n" + "="*70)
@@ -51,10 +51,10 @@ def main():
     y_train, y_test = y[:split_idx], y[split_idx:]
     dates_train, dates_test = dates[:split_idx], dates[split_idx:]
     
-    print(f"✓ Training set: {len(X_train)} samples")
-    print(f"✓ Test set: {len(X_test)} samples")
-    print(f"✓ Training period: {dates_train[0].date()} to {dates_train[-1].date()}")
-    print(f"✓ Test period: {dates_test[0].date()} to {dates_test[-1].date()}")
+    print(f"Training set: {len(X_train)} samples")
+    print(f"Test set: {len(X_test)} samples")
+    print(f"Training period: {dates_train[0].date()} to {dates_train[-1].date()}")
+    print(f"Test period: {dates_test[0].date()} to {dates_test[-1].date()}")
     
     # Step 3: Train all models
     print("\n" + "="*70)
@@ -111,7 +111,7 @@ def main():
     print("Generating model comparison plot...")
     comparison.evaluator.compare_models(save_path='results/model_comparison.png')
     
-    print("\n✓ All visualizations saved to 'results/' directory")
+    print("\nAll visualizations saved to 'results/' directory")
     
     # Final summary
     print("\n" + "="*70)
@@ -131,7 +131,7 @@ def main():
     print("  • matplotlib     - Visualization")
     print("="*70 + "\n")
     
-    print("✓ Project Complete! Check the 'results/' folder for visualizations.")
+    print("Project Complete! Check the 'results/' folder for visualizations.")
 
 
 if __name__ == "__main__":

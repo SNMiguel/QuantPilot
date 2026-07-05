@@ -4,7 +4,7 @@ Sends notifications on order fills, daily summaries, retrain results, and errors
 All methods fail silently — a broken webhook never crashes a trading job.
 """
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class DiscordAlerter:
@@ -20,11 +20,9 @@ class DiscordAlerter:
     def send_order_alert(self, ticker: str, side: str,
                          qty: int, price: float) -> None:
         """Called when an order is submitted."""
-        emoji  = '🟢' if side.upper() == 'BUY' else '🔴'
-        value  = qty * price
+        value = qty * price
         self._post(
-            f"{emoji} **ORDER** | `{ticker}`\n"
-            f"> Side: **{side.upper()}**\n"
+            f"**ORDER — {side.upper()}** `{ticker}`\n"
             f"> Qty: {qty} shares @ ${price:.2f}\n"
             f"> Value: ${value:,.2f}"
         )
@@ -38,7 +36,7 @@ class DiscordAlerter:
             signals:         {ticker: signal_dict} for all tickers.
             portfolio_value: Current total portfolio equity.
         """
-        lines = ["📊 **Daily Summary**",
+        lines = ["**Daily Summary**",
                  f"> Portfolio: **${portfolio_value:,.2f}**",
                  "> Signals:"]
 
@@ -46,10 +44,9 @@ class DiscordAlerter:
             action = sig.get('signal', 'N/A')
             delta  = sig.get('delta_pct', 0.0)
             conf   = sig.get('confidence', 0.0)
-            emoji  = {'BUY': '🟢', 'SELL': '🔴', 'HOLD': '⚪'}.get(action, '❓')
             lines.append(
-                f">   {emoji} `{ticker}` — **{action}**  "
-                f"Δ{delta:+.2f}%  conf={conf:.2f}"
+                f">   `{ticker}` **{action}**  "
+                f"move {delta:+.2f}%  conf {conf:.2f}"
             )
 
         self._post('\n'.join(lines))
@@ -59,23 +56,25 @@ class DiscordAlerter:
         Called after weekly model retrain.
 
         Args:
-            metrics: {ticker: {'rmse': float, 'r2': float, ...}}
+            metrics: {ticker: {'rmse': float, 'dir_acc': float, ...}}
+                     RMSE is in next-day return units.
         """
-        lines = ["🤖 **Weekly Retrain Complete**"]
+        lines = ["**Weekly Retrain Complete**"]
         for ticker, m in metrics.items():
-            rmse = m.get('rmse', 0)
-            r2   = m.get('r2', 0)
+            rmse    = m.get('rmse', 0)
+            dir_acc = m.get('dir_acc', 0)
             lines.append(
-                f"> `{ticker}` — RMSE: ${rmse:.4f}  R²: {r2:.4f}"
+                f"> `{ticker}` — RMSE {rmse:.5f} (returns)  "
+                f"dir. accuracy {dir_acc:.3f}"
             )
         self._post('\n'.join(lines))
 
     def send_error(self, error_message: str) -> None:
         """Called on any uncaught exception in a job."""
         self._post(
-            f"🚨 **ERROR**\n"
+            f"**ERROR**\n"
             f"> {error_message}\n"
-            f"> Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
+            f"> Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
         )
 
     # ------------------------------------------------------------------
@@ -122,5 +121,5 @@ if __name__ == "__main__":
 
     alerter.send_error("Phase 11 test alert — ignore this message.")
 
-    print("✓ All alerts sent. Check your Discord channel.")
+    print("All alerts sent. Check your Discord channel.")
     print("monitoring/alerts.py: OK")

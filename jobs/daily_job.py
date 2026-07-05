@@ -1,18 +1,20 @@
 """
-Daily trading job — runs once per day after market close (or pre-open).
+Daily trading job — runs once per day after market close.
 
 Execution order:
   1.  Cancel any leftover open orders
-  2.  Check market is open today (skip if holiday / weekend)
-  3.  Fetch latest price bar for each ticker → cache in DB
-  4.  Fetch today's news sentiment for each ticker → cache in DB
-  5.  Build feature matrix up to today (leakage-free)
-  6.  Load best model from registry per ticker
-  7.  Predict next-day close, compute confidence
-  8.  Generate signal (BUY / SELL / HOLD)
-  9.  Execute signal via OrderManager
-  10. Snapshot portfolio value in DB
-  11. Send daily summary to Discord
+  2.  Check today was a trading day (calendar, not clock — the job runs
+      after the close, so the clock always says "closed")
+  3.  Circuit breaker: halt if portfolio drawdown exceeds the cap
+  4.  Fetch latest price bars for each ticker (cached in DB)
+  5.  Fetch today's news sentiment for each ticker (cached in DB)
+  6.  Build leakage-free features up to today
+  7.  Load the latest promoted model per ticker (next-return target only)
+  8.  Predict next-day return, compute confidence
+  9.  Generate signal (BUY / SELL / HOLD), log prediction to DB
+  10. Execute signal via OrderManager (orders queue for next open)
+  11. Snapshot portfolio value in DB
+  12. Send daily summary to Discord
 
 Usage:
     python -m jobs.daily_job
@@ -28,16 +30,16 @@ import config
 from data.database import Database
 from data.alpaca_feed import AlpacaFeed
 from data.news_sentiment import NewsSentiment
-from features.walk_forward import get_features_at
+from features.walk_forward import get_latest_features
 from features.sentiment_features import merge_sentiment
 from models.registry import ModelRegistry
-from models.ensemble import EnsembleModel
 from signals.generator import SignalGenerator
 from risk.position_sizer import PositionSizer
 from risk.portfolio import Portfolio
 from execution.alpaca_broker import AlpacaBroker
 from execution.order_manager import OrderManager
 from monitoring.alerts import DiscordAlerter
+from training.walk_forward_trainer import TARGET_KIND
 
 
 def run() -> None:
@@ -64,113 +66,142 @@ def run() -> None:
         sizer   = PositionSizer(max_position_pct=config.MAX_POSITION_PCT)
         portfolio = Portfolio(feed, db)
         order_mgr = OrderManager(broker, portfolio, sizer, db, alerter)
-        # signal_gen is created per-ticker below to support per-ticker thresholds
-        registry = ModelRegistry()
+        registry  = ModelRegistry()
         sentiment_client = NewsSentiment(config.NEWS_API_KEY)
 
         # ------------------------------------------------------------------
         # 2. Cancel stale orders
         # ------------------------------------------------------------------
         broker.cancel_all_orders()
-        print("✓ Cancelled any open orders")
+        print("Cancelled any open orders")
 
         # ------------------------------------------------------------------
-        # 3. Market-open check (skip weekends / holidays)
+        # 3. Trading-day check (calendar, not clock)
         # ------------------------------------------------------------------
-        if not broker.is_market_open():
-            print("Market is closed today — exiting.")
+        if not broker.market_traded_today():
+            print("No trading session today (weekend/holiday) — exiting.")
             return
 
         # ------------------------------------------------------------------
-        # 4–9. Per-ticker loop
+        # 4. Circuit breaker
+        # ------------------------------------------------------------------
+        drawdown = portfolio.get_max_drawdown()
+        if drawdown > config.MAX_DRAWDOWN_HALT:
+            msg = (f"Circuit breaker: drawdown {drawdown:.1%} exceeds "
+                   f"{config.MAX_DRAWDOWN_HALT:.0%} cap. No trades today — "
+                   f"manual review required.")
+            print(msg)
+            alerter.send_error(msg)
+            portfolio.snapshot(today)
+            return
+
+        # ------------------------------------------------------------------
+        # 5–10. Per-ticker loop
         # ------------------------------------------------------------------
         all_signals: dict = {}
 
         for ticker in config.WATCHLIST:
             print(f"\n--- {ticker} ---")
 
-            # 4a. Fetch price history (cached in DB)
+            # 5a. Fetch price history (cached in DB)
             start_date = "2022-01-01"
             df = feed.get_historical_bars(ticker, start_date, today, db=db)
             if df.empty:
-                print(f"  ⚠ No price data — skipping {ticker}")
+                print(f"  WARN: no price data — skipping {ticker}")
                 continue
 
-            # 4b. Fetch sentiment
+            # 5b. Fetch sentiment
             sentiment_score = sentiment_client.get_daily_score(ticker, today, db)
             sentiment_df    = db.get_sentiment(ticker, start_date, today)
             print(f"  Sentiment today: {sentiment_score:+.4f}")
 
-            # 5. Build leakage-free features at today's cutoff
-            X, y, dates = get_features_at(df, today)
-            if len(X) < 2:
-                print(f"  ⚠ Not enough feature rows — skipping {ticker}")
+            # 6. Latest feature row (leakage-free, includes today)
+            feature_df = get_latest_features(df, today)
+            if feature_df.empty:
+                print(f"  WARN: not enough feature rows — skipping {ticker}")
                 continue
+            feature_df = merge_sentiment(feature_df, sentiment_df)
 
-            # Merge sentiment into feature matrix
-            import pandas as pd
-            import numpy as np
-            feature_df   = pd.DataFrame(X, index=dates)
-            feature_df   = merge_sentiment(feature_df, sentiment_df)
-            X_full       = feature_df.values
-
-            # 6. Load best model
-            model, meta = registry.load_best('rmse',
-                                             name_prefix=f'ensemble_{ticker}')
+            # 7. Load the latest promoted model for this ticker.
+            # The target filter refuses models trained to predict price
+            # levels — treating those outputs as returns would be
+            # catastrophic.
+            model, meta = registry.load_latest(
+                f'ensemble_{ticker}',
+                require_meta={'target': TARGET_KIND},
+            )
             if model is None:
-                print(f"  ⚠ No model for {ticker} — run train_job.py first")
+                print(f"  WARN: no {TARGET_KIND} model for {ticker} — "
+                      f"run train_job first")
                 continue
-            print(f"  Model RMSE: ${meta['metrics']['rmse']:.4f}")
+            if meta.get('meta', {}).get('n_features') != feature_df.shape[1]:
+                print(f"  WARN: feature count mismatch for {ticker} — "
+                      f"retrain required, skipping")
+                continue
+            print(f"  Model {meta['version_id']}  "
+                  f"RMSE={meta['metrics']['rmse']:.5f}  "
+                  f"dir_acc={meta['metrics'].get('dir_acc', 0):.3f}")
 
-            # 7. Predict on latest row
-            X_today     = X_full[-1].reshape(1, -1)
-            predicted   = float(model.predict(X_today)[0])
-            current     = float(df['Close'].iloc[-1])
+            # 8. Predict next-day return on today's row
+            X_today          = feature_df.values[-1].reshape(1, -1)
+            predicted_return = float(model.predict(X_today)[0])
+            current          = float(df['Close'].iloc[-1])
 
-            confidence  = 0.5   # default
+            confidence = 0.5
             if hasattr(model, 'get_confidence'):
                 confidence = float(model.get_confidence(X_today))
 
-            print(f"  Current: ${current:.2f}  Predicted: ${predicted:.2f}  "
+            print(f"  Current: ${current:.2f}  "
+                  f"Predicted return: {predicted_return:+.3%}  "
                   f"Conf: {confidence:.2f}")
 
-            # 8. Generate signal
+            # 9. Generate signal and log the prediction
             threshold  = config.SIGNAL_THRESHOLD_OVERRIDES.get(
                 ticker, config.SIGNAL_THRESHOLD)
             signal_gen = SignalGenerator(
                 threshold=threshold,
                 confidence_threshold=config.CONFIDENCE_THRESHOLD,
             )
-            signal = signal_gen.generate(current, predicted, confidence)
+            signal = signal_gen.generate_from_return(
+                current, predicted_return, confidence)
             all_signals[ticker] = signal
-            print(f"  Signal: {signal['signal']}  Δ{signal['delta_pct']:+.2f}%")
+            print(f"  Signal: {signal['signal']}  d{signal['delta_pct']:+.2f}%")
 
-            # 9. Execute
+            db.upsert_prediction(
+                date=today,
+                ticker=ticker,
+                model_version=meta['version_id'],
+                predicted_price=signal['predicted'],
+                signal=signal['signal'],
+                confidence=confidence,
+            )
+
+            # 10. Execute
             order = order_mgr.execute_signal(signal, ticker, df)
             if order:
-                print(f"  ✓ Order submitted: {order.get('id', order)}")
+                print(f"  Order submitted: {order.get('id', order)}")
             else:
-                print(f"  – No order placed (HOLD or risk limit)")
+                print(f"  No order placed (HOLD, flat, or risk limit)")
 
         # ------------------------------------------------------------------
-        # 10. Snapshot portfolio
+        # 11. Snapshot portfolio
         # ------------------------------------------------------------------
         portfolio_value = portfolio.get_portfolio_value()
         portfolio.snapshot(today)
         print(f"\nPortfolio value: ${portfolio_value:,.2f}")
 
         # ------------------------------------------------------------------
-        # 11. Discord summary
+        # 12. Discord summary
         # ------------------------------------------------------------------
         alerter.send_daily_summary(all_signals, portfolio_value)
-        print("✓ Discord summary sent")
+        print("Discord summary sent")
         print(f"\n{'='*55}")
         print("  Daily job complete")
         print(f"{'='*55}\n")
 
     except Exception as exc:
         msg = f"daily_job failed: {exc}\n{traceback.format_exc()}"
-        print(f"\n🚨 {msg}")
+        print(f"\nERROR: {msg}")
         alerter.send_error(msg)
         raise
 

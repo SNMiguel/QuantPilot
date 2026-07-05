@@ -1,0 +1,30 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # The test suite is fully synthetic — no API keys, database, or
+      # tensorflow needed (models/__init__.py degrades gracefully).
+      - name: Install test dependencies
+        run: pip install numpy pandas scikit-learn joblib python-dotenv pytest
+
+      - name: Run tests
+        run: python -m pytest tests/ -v

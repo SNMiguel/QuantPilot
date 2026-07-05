@@ -47,7 +47,7 @@ class ModelComparison:
         self.nn_model.train(X_train_scaled, y_train, epochs=100, verbose=0)
         
         print("\n" + "="*60)
-        print("✓ ALL MODELS TRAINED SUCCESSFULLY!")
+        print("ALL MODELS TRAINED SUCCESSFULLY!")
         print("="*60 + "\n")
     
     def evaluate_all_models(self, X_test, y_test, dates_test):
@@ -84,7 +84,7 @@ class ModelComparison:
         }
         
         print("="*60)
-        print("✓ EVALUATION COMPLETE")
+        print("EVALUATION COMPLETE")
         print("="*60 + "\n")
     
     def print_comparison(self):
@@ -126,7 +126,7 @@ class ModelComparison:
         print("\n" + "="*60)
         print("BEST MODEL")
         print("="*60)
-        print(f"🏆 {best_model}")
+        print(f"{best_model}")
         print(f"   RMSE: ${best_rmse:.2f}")
         print(f"   R² Score: {self.results[best_model]['metrics']['R²']:.4f}")
         print("="*60 + "\n")
@@ -168,4 +168,4 @@ if __name__ == "__main__":
     # Get best model
     best_model, best_results = comparison.get_best_model()
     
-    print("✓ Model comparison test complete!")
+    print("Model comparison test complete!")
