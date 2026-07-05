@@ -169,7 +169,7 @@ with left:
         unsafe_allow_html=True,
     )
 with right:
-    if st.button("Refresh data", use_container_width=True):
+    if st.button("Refresh data", width='stretch'):
         st.cache_data.clear()
 
 st.markdown("")
@@ -258,7 +258,7 @@ else:
     st.altair_chart(
         alt.vconcat(area + baseline, dd).resolve_scale(x='shared')
            .configure_view(strokeOpacity=0),
-        use_container_width=True,
+        width='stretch',
     )
 
 # ------------------------------------------------------------------
@@ -283,7 +283,7 @@ with tab_signals:
                 'predicted_price': 'Predicted close',
                 'model_version': 'Model',
             }),
-            use_container_width=True, hide_index=True,
+            width='stretch', hide_index=True,
             column_config={
                 'Confidence': st.column_config.ProgressColumn(
                     'Confidence', min_value=0.0, max_value=1.0,
@@ -309,7 +309,7 @@ with tab_trades:
                 'qty': 'Qty', 'price': 'Price', 'status': 'Status',
                 'timestamp': 'Time (UTC)',
             }),
-            use_container_width=True, hide_index=True,
+            width='stretch', hide_index=True,
             column_config={
                 'Price': st.column_config.NumberColumn(format='$%.2f'),
                 'Order': st.column_config.TextColumn(width='small'),
@@ -347,7 +347,7 @@ with tab_sentiment:
                      alt.Tooltip('score:Q', format='+.3f')],
         ).properties(height=240)
         st.altair_chart(chart.configure_view(strokeOpacity=0),
-                        use_container_width=True)
+                        width='stretch')
 
 with tab_models:
     try:
@@ -361,16 +361,18 @@ with tab_models:
         for v in versions:
             m    = v.get('metrics', {})
             meta = v.get('meta', {})
+            c80  = meta.get('conformal_80')
             rows.append({
                 'Model':     v['name'],
                 'Version':   v['version_id'],
                 'Target':    meta.get('target', 'price (legacy)'),
                 'RMSE':      m.get('rmse'),
                 'Dir. acc':  m.get('dir_acc'),
+                '±80% (bps)': round(c80 * 10000, 1) if c80 is not None else None,
                 'Saved':     v['timestamp'][:19].replace('T', ' '),
             })
         st.dataframe(
-            pd.DataFrame(rows), use_container_width=True, hide_index=True,
+            pd.DataFrame(rows), width='stretch', hide_index=True,
             column_config={
                 'RMSE': st.column_config.NumberColumn(format='%.5f'),
                 'Dir. acc': st.column_config.NumberColumn(format='%.3f'),
@@ -378,9 +380,11 @@ with tab_models:
         )
         st.caption("RMSE is in next-day return units. A model is promoted "
                    "only when it beats the incumbent on the same held-out "
-                   "window; directional accuracy of 0.500 is a coin flip.")
+                   "window; directional accuracy of 0.500 is a coin flip. "
+                   "±80% is the conformal half-interval — a signal only trades "
+                   "when the predicted move exceeds it.")
 
 st.markdown("")
-st.caption("Data: Alpaca Markets (IEX), NewsAPI + VADER, Neon PostgreSQL. "
-           "Jobs run via GitHub Actions — daily after the close, "
-           "retraining on Sundays.")
+st.caption("Data: Alpaca Markets (IEX), NewsAPI + Claude/VADER sentiment, "
+           "Neon PostgreSQL. Jobs run via GitHub Actions — daily after the "
+           "close, retraining on Sundays.")

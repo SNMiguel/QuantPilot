@@ -28,13 +28,16 @@ class DiscordAlerter:
         )
 
     def send_daily_summary(self, signals: dict,
-                           portfolio_value: float) -> None:
+                           portfolio_value: float,
+                           rationale: str = None) -> None:
         """
         Called at the end of every daily job run.
 
         Args:
             signals:         {ticker: signal_dict} for all tickers.
             portfolio_value: Current total portfolio equity.
+            rationale:       Optional plain-English narration of the day's
+                             decisions (from monitoring.narrator).
         """
         lines = ["**Daily Summary**",
                  f"> Portfolio: **${portfolio_value:,.2f}**",
@@ -48,6 +51,10 @@ class DiscordAlerter:
                 f">   `{ticker}` **{action}**  "
                 f"move {delta:+.2f}%  conf {conf:.2f}"
             )
+
+        if rationale:
+            lines.append("")
+            lines.append(f"_{rationale}_")
 
         self._post('\n'.join(lines))
 

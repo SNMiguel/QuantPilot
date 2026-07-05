@@ -32,7 +32,7 @@ def generate(equity_curve: pd.DataFrame,
         ticker:       Ticker label for the chart title.
         save_dir:     Directory to save the equity curve PNG.
         price_df:     Raw OHLCV DataFrame for the same period. When given,
-                      a buy-and-hold baseline is computed — a strategy
+                      a buy-and-hold baseline is computed - a strategy
                       that cannot beat simply holding the stock has no
                       edge, whatever its other metrics say.
 
@@ -42,7 +42,7 @@ def generate(equity_curve: pd.DataFrame,
     os.makedirs(save_dir, exist_ok=True)
 
     if equity_curve.empty:
-        print("WARN: empty equity curve — no trades were made.")
+        print("WARN: empty equity curve - no trades were made.")
         return {}
 
     # ------------------------------------------------------------------
@@ -137,7 +137,7 @@ def _compute_pnl(trades: pd.DataFrame) -> pd.DataFrame:
 
 
 def _print_summary(metrics: dict, ticker: str) -> None:
-    label = f" — {ticker}" if ticker else ''
+    label = f"  {ticker}" if ticker else ''
     print(f"\n{'='*55}")
     print(f"  Backtest Results{label}")
     print(f"{'='*55}")
@@ -185,7 +185,7 @@ def _plot_equity_curve(equity_curve: pd.DataFrame, metrics: dict,
     ax.scatter(sells.index, sells['portfolio_value'],
                marker='v', color='red',   s=60, zorder=5, label='SELL')
 
-    label = f" — {ticker}" if ticker else ''
+    label = f"  {ticker}" if ticker else ''
     ax.set_title(f'Backtest Equity Curve{label}', fontsize=15, fontweight='bold')
     ax.set_ylabel('Portfolio Value ($)', fontsize=11)
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(

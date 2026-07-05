@@ -1,5 +1,17 @@
 # Production Trading System — Roadmap
 
+> **HISTORICAL BUILD LOG — superseded as the source of truth.**
+> This file records how the system was built out from the original demo
+> (Phases 1–13). The architecture has since moved on and this document is
+> **no longer authoritative**. For how the system actually works today, read
+> [CLAUDE.md](CLAUDE.md) and [README.md](README.md). Notably, since this log
+> was written: the model target changed from same-day price to **next-day
+> return**, promotion is decided on a **shared held-out window** (not stored
+> RMSE), and the pipeline gained **LLM news sentiment**, **conformal
+> prediction intervals**, **volatility-regime position sizing**, an
+> **LLM trade narrator**, and a **pytest suite + CI**. Descriptions below
+> that mention a same-day price target or RMSE-based promotion are stale.
+
 Tracks every planned change to evolve this project from an ML demo into a
 paper trading system. Items are grouped by phase. Status is updated as work
 progresses.

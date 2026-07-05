@@ -1,6 +1,13 @@
 """
-Main script for AAPL Stock Price Prediction using Multiple ML Frameworks.
-Demonstrates: scikit-learn, TensorFlow/Keras, feature engineering, and model comparison.
+LEGACY DEMO — not the production trading path.
+
+This is the original single-file model-comparison demo (predicts the
+SAME-day AAPL close from full-dataset indicators). It is retained only to
+show the project's starting point; it contains the look-ahead bias the
+production pipeline was built to fix. Do NOT use it for trading or as a
+template — the live system runs through jobs/ (see README.md / CLAUDE.md).
+
+Kept runnable for historical reference: python main.py
 """
 import warnings
 warnings.filterwarnings('ignore')

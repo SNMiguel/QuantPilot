@@ -17,6 +17,7 @@ import pandas as pd
 
 from features.walk_forward import get_latest_features
 from features.sentiment_features import merge_sentiment
+from features.regime import detect_regime
 
 
 class BacktestEngine:
@@ -117,7 +118,9 @@ class BacktestEngine:
                 fill_price = open_price * (1 + slip)
                 atr        = sizer.calculate_atr(df.loc[:today])
                 pv         = cash + position * current_price
-                qty        = sizer.size(pv, current_price, atr)
+                regime     = detect_regime(df.loc[:today])
+                qty        = sizer.size(pv, current_price, atr,
+                                        size_multiplier=regime['size_multiplier'])
 
                 if qty > 0:
                     cost       = qty * fill_price

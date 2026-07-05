@@ -55,9 +55,16 @@ Production pipeline (jobs/ orchestrates everything):
    'n_features': ...}`.
 5. **Signals/risk/execution** — `signals/generator.py`
    (`generate_from_return()` is the native entry point), `risk/position_sizer.py`
-   (ATR sizing + 15% cap), `risk/portfolio.py`, `execution/order_manager.py`
-   (position-aware: SELL closes the held qty, BUY never stacks),
-   `execution/alpaca_broker.py`.
+   (ATR sizing + 15% cap, optional `size_multiplier`), `risk/portfolio.py`,
+   `execution/order_manager.py` (position-aware: SELL closes the held qty, BUY
+   never stacks; accepts a regime `size_multiplier`), `execution/alpaca_broker.py`.
+5b. **Intelligence layer** — `data/llm_sentiment.py` (Claude structured event
+   extraction; falls back to `data/news_sentiment.py` VADER when no
+   `ANTHROPIC_API_KEY`), `features/regime.py` (realized-vol percentile →
+   position-size multiplier), `models/ensemble.py` conformal intervals
+   (`predict_interval` / `interval_excludes_zero`, calibrated from OOF
+   residuals), `monitoring/narrator.py` (Claude daily rationale; templated
+   fallback). All four degrade gracefully and are never hard dependencies.
 6. **Backtest** — `backtest/engine.py` (next-day-open fills, commission,
    slippage, stop-loss) and `backtest/report.py` (metrics + buy-and-hold
    baseline when given `price_df`).
@@ -76,6 +83,13 @@ Production pipeline (jobs/ orchestrates everything):
 - No emojis in code, output, or docs (owner preference).
 - `models/__init__.py` must keep tensorflow imports optional; tests and the
   dashboard run without it.
+- The Anthropic SDK is optional: `data/llm_sentiment.py` and
+  `monitoring/narrator.py` must import and run without `anthropic` installed
+  or `ANTHROPIC_API_KEY` set, falling back to VADER / templated output. Never
+  make a job crash on a missing LLM.
+- Model IDs come from the claude-api skill: default `claude-opus-4-8` via
+  `config.LLM_MODEL`. Use `output_config={"format": {...}}` (not the
+  deprecated `output_format`) for structured outputs.
 
 ## Style
 

@@ -2,17 +2,26 @@
 News sentiment fetcher and scorer.
 Fetches headlines from NewsAPI and scores them with VADER (local, no extra API cost).
 """
-import nltk
 import requests
 from datetime import datetime, timedelta
 
-# Download VADER lexicon on first run (one-time, ~1MB)
-try:
-    nltk.data.find('sentiment/vader_lexicon.zip')
-except LookupError:
-    nltk.download('vader_lexicon', quiet=True)
 
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
+def _build_analyzer():
+    """
+    Build the VADER analyzer lazily so this module imports even where
+    nltk isn't installed (CI, the LLM-only path). Returns None on failure;
+    score_articles() then yields a neutral 0.0.
+    """
+    try:
+        import nltk
+        try:
+            nltk.data.find('sentiment/vader_lexicon.zip')
+        except LookupError:
+            nltk.download('vader_lexicon', quiet=True)
+        from nltk.sentiment.vader import SentimentIntensityAnalyzer
+        return SentimentIntensityAnalyzer()
+    except Exception:
+        return None
 
 
 class NewsSentiment:
@@ -20,7 +29,7 @@ class NewsSentiment:
 
     def __init__(self, api_key: str):
         self.api_key  = api_key
-        self.analyzer = SentimentIntensityAnalyzer()
+        self.analyzer = _build_analyzer()
         self.base_url = "https://newsapi.org/v2/everything"
 
     # ------------------------------------------------------------------
@@ -85,9 +94,10 @@ class NewsSentiment:
         Returns the mean compound score across all articles.
         Compound score is in [-1.0, 1.0]: negative = bearish, positive = bullish.
 
-        Returns 0.0 (neutral) if articles list is empty.
+        Returns 0.0 (neutral) if articles list is empty or VADER is
+        unavailable (nltk not installed).
         """
-        if not articles:
+        if not articles or self.analyzer is None:
             return 0.0
 
         scores = []

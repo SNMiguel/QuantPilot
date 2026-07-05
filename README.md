@@ -41,19 +41,21 @@ QuantPilot/
 ├── data/
 │   ├── database.py               # PostgreSQL via SQLAlchemy (Neon.tech)
 │   ├── alpaca_feed.py            # Live + historical price data (IEX feed)
-│   └── news_sentiment.py         # NewsAPI + VADER sentiment scoring
+│   ├── news_sentiment.py         # NewsAPI + VADER sentiment (fallback path)
+│   └── llm_sentiment.py          # Claude structured event extraction (+ VADER fallback)
 │
 ├── features/
 │   ├── indicators.py             # 18 technical indicators (MA, RSI, MACD, BB...)
-│   ├── walk_forward.py           # Leakage-free feature slicing by cutoff date
-│   └── sentiment_features.py     # Merges sentiment scores onto feature matrix
+│   ├── walk_forward.py           # Leakage-free features; next-day return target
+│   ├── sentiment_features.py     # Merges sentiment scores onto feature matrix
+│   └── regime.py                 # Volatility-regime detection → position-size scaling
 │
 ├── models/
-│   ├── ensemble.py               # Ridge meta-learner over OOF base predictions
+│   ├── ensemble.py               # Stacked LR/RF/SVR + conformal prediction intervals
 │   ├── registry.py               # JSON manifest + joblib/keras persistence
 │   ├── linear_regression.py      # LR, Random Forest, SVR (scikit-learn)
-│   ├── neural_network.py         # LSTM + standard/deep/wide architectures
-│   └── model_comparison.py       # Trains and evaluates all models side-by-side
+│   ├── neural_network.py         # Experimental Keras LSTM (not in production ensemble)
+│   └── model_comparison.py       # Legacy demo trainer/evaluator
 │
 ├── training/
 │   ├── walk_forward_trainer.py   # Expanding-window cross-validation + retrain
@@ -76,6 +78,7 @@ QuantPilot/
 │
 ├── monitoring/
 │   ├── dashboard.py              # Streamlit dashboard (Altair, dark theme)
+│   ├── narrator.py               # Claude plain-English "why we traded" summary
 │   └── alerts.py                 # Discord webhook notifications
 │
 ├── jobs/
@@ -101,6 +104,15 @@ The system trains one **ensemble model per ticker** using a stacked architecture
 - **Confidence**: fraction of base models agreeing with the ensemble's direction — the 0.60 gate means at least two of three must agree
 - **Validation**: 5-fold expanding-window walk-forward evaluating the exact ensemble that gets deployed
 - **Registry**: versioned JSON manifest with target metadata; jobs refuse to load a model trained for a different target. A Keras LSTM lives in `models/neural_network.py` as an experimental track outside the production ensemble.
+
+## Intelligence Layer
+
+Four components add judgment on top of the base forecaster. Each degrades gracefully — if the Anthropic API key or a dependency is missing, the system keeps running on the simpler path.
+
+- **LLM news sentiment** ([data/llm_sentiment.py](data/llm_sentiment.py)) — instead of VADER scoring words in isolation (which reads "crushes earnings" as negative), Claude reads the day's headlines and returns a structured verdict: direction, a score in [-1, 1], confidence, and the concrete events it keyed on (earnings beat, guidance cut, antitrust suit). Falls back to VADER when `ANTHROPIC_API_KEY` is unset.
+- **Conformal prediction intervals** ([models/ensemble.py](models/ensemble.py)) — split-conformal calibration from out-of-fold residuals gives each prediction an interval with finite-sample coverage. The trade gate is principled: act only when the 80% interval excludes zero (the move is statistically distinguishable from noise), not just when a heuristic confidence clears a threshold.
+- **Volatility-regime sizing** ([features/regime.py](features/regime.py)) — realized-volatility percentile classifies the market as calm/normal/elevated/turbulent and scales position size down (to ~40%) when volatility spikes. Applied identically in live trading and the backtester.
+- **Trade narrator** ([monitoring/narrator.py](monitoring/narrator.py)) — Claude turns each day's actual inputs (predicted return, confidence, sentiment events, regime, risk-gate outcome) into a few grounded sentences explaining *why* the system traded, posted to Discord. Falls back to a templated summary.
 
 ## Dashboard
 
@@ -139,6 +151,7 @@ ALPACA_BASE_URL=https://paper-api.alpaca.markets
 DB_URL=                   # Neon.tech PostgreSQL connection string
 NEWS_API_KEY=             # newsapi.org
 DISCORD_WEBHOOK_URL=      # optional — alerts channel
+ANTHROPIC_API_KEY=        # optional — LLM sentiment + trade narration (falls back to VADER)
 LIVE_TRADING=false        # set true only when ready for real money
 ```
 

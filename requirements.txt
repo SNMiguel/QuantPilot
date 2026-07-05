@@ -3,9 +3,14 @@ yfinance==0.2.48
 pandas==2.2.0
 numpy==1.26.4
 scikit-learn==1.4.0
-tensorflow==2.15.0
 matplotlib==3.8.2
 seaborn==0.13.1
+
+# TensorFlow is only needed for the EXPERIMENTAL LSTM in
+# models/neural_network.py — it is NOT part of the production ensemble
+# (LR/RF/SVR). The env marker skips it on Python 3.13+, where TF 2.15 has
+# no wheel; the rest of the system (and the whole test suite) runs without it.
+tensorflow==2.15.0 ; python_version < "3.13"
 
 # Database
 sqlalchemy>=2.0
@@ -18,11 +23,15 @@ alpaca-trade-api>=3.0.0
 newsapi-python>=0.2.7
 nltk>=3.8
 
+# LLM sentiment + trade narration (optional — falls back to VADER/templates
+# if ANTHROPIC_API_KEY is unset)
+anthropic>=0.40
+
 # Config
 python-dotenv>=1.0
 
 # Dashboard
-streamlit>=1.30
+streamlit>=1.43
 
 # HTTP (used by alerts)
 requests>=2.31

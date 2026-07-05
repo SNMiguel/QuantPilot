@@ -75,7 +75,8 @@ class PositionSizer:
 
     def size(self, portfolio_value: float,
              current_price: float,
-             atr: float) -> int:
+             atr: float,
+             size_multiplier: float = 1.0) -> int:
         """
         Calculate the number of shares to trade.
 
@@ -83,12 +84,18 @@ class PositionSizer:
             portfolio_value: Total equity in the account.
             current_price:   Current price of the asset.
             atr:             ATR value from calculate_atr().
+            size_multiplier: Scales the final share count (e.g. a volatility
+                             regime multiplier in (0, 1]). Applied to both
+                             the ATR-based size and the exposure cap so a
+                             turbulent-market trade is smaller everywhere.
 
         Returns:
             Integer number of shares (floored). Returns 0 if any
             input is invalid or the result rounds to zero.
         """
         if portfolio_value <= 0 or current_price <= 0 or atr <= 0:
+            return 0
+        if size_multiplier <= 0:
             return 0
 
         # ATR-based: risk $ / stop-loss $
@@ -100,7 +107,7 @@ class PositionSizer:
         max_dollars = portfolio_value * self.max_position_pct
         cap_shares  = max_dollars / current_price
 
-        shares = int(min(raw_shares, cap_shares))
+        shares = int(min(raw_shares, cap_shares) * size_multiplier)
         return max(shares, 0)
 
 

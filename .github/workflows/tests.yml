@@ -23,8 +23,11 @@ jobs:
 
       # The test suite is fully synthetic — no API keys, database, or
       # tensorflow needed (models/__init__.py degrades gracefully).
+      # The test suite is synthetic — no API keys, DB, tensorflow, nltk, or
+      # anthropic needed (those paths degrade gracefully). `requests` is the
+      # one import the sentiment module needs at module load.
       - name: Install test dependencies
-        run: pip install numpy pandas scikit-learn joblib python-dotenv pytest
+        run: pip install numpy pandas scikit-learn joblib python-dotenv requests pytest
 
       - name: Run tests
         run: python -m pytest tests/ -v

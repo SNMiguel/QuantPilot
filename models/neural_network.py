@@ -1,5 +1,11 @@
 """
 Neural Network models using TensorFlow/Keras for stock prediction.
+
+EXPERIMENTAL — not part of the production ensemble. The live model is the
+LR/RF/SVR stack in models/ensemble.py; this Keras LSTM/MLP is kept as a
+research track and is imported lazily (models/__init__.py) so the system
+runs without TensorFlow. Requires TF, which is optional and unavailable on
+Python 3.13+ (see requirements.txt).
 """
 import numpy as np
 import tensorflow as tf

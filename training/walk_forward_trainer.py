@@ -210,6 +210,10 @@ class WalkForwardTrainer:
                     'test_window': f"{dates[split].date()} -> "
                                    f"{dates[-1].date()}",
                     'fold_avg':   fold_avg,
+                    # Conformal interval half-widths (return units) so the
+                    # dashboard can render a fan chart without reloading.
+                    'conformal_80': challenger.conformal_halfwidth(0.80),
+                    'conformal_95': challenger.conformal_halfwidth(0.95),
                 },
             )
         else:

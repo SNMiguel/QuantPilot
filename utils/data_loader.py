@@ -1,5 +1,10 @@
 """
 Data loading and preprocessing utilities for stock prediction.
+
+LEGACY: used only by the main.py demo. The production pipeline sources
+prices from data/alpaca_feed.py and builds leakage-free features via
+features/walk_forward.py. prepare_features() here computes indicators over
+the full dataset (look-ahead bias) and is deliberately NOT used for trading.
 """
 import yfinance as yf
 import pandas as pd

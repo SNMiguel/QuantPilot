@@ -54,6 +54,9 @@ class EnsembleModel:
         # meta-learner to a constant.
         self.meta_learner = Ridge(alpha=1e-4)
         self.is_fitted    = False
+        # Sorted absolute out-of-fold residuals — the calibration set for
+        # split-conformal prediction intervals (populated in fit()).
+        self._calib_residuals = None
 
     # ------------------------------------------------------------------
     # Fit
@@ -83,7 +86,17 @@ class EnsembleModel:
             oof_blocks.append(np.column_stack(fold_preds))
             y_blocks.append(y_train[val_idx])
 
-        self.meta_learner.fit(np.vstack(oof_blocks), np.concatenate(y_blocks))
+        oof_stack = np.vstack(oof_blocks)
+        oof_y     = np.concatenate(y_blocks)
+        self.meta_learner.fit(oof_stack, oof_y)
+
+        # Conformal calibration: the meta-learner's residuals on the
+        # out-of-fold predictions. These come from base models that never
+        # saw the validation rows, so they are a valid (slightly
+        # conservative — the meta-learner is a 3-feature Ridge) calibration
+        # sample for split-conformal intervals.
+        oof_pred = self.meta_learner.predict(oof_stack)
+        self._calib_residuals = np.sort(np.abs(oof_y - oof_pred))
 
         # Production base models: refit on everything
         for name in names:
@@ -121,6 +134,44 @@ class EnsembleModel:
         agreement = (np.sign(stacked) ==
                      np.sign(ensemble)[:, None]).mean(axis=1)
         return float(agreement.mean())
+
+    # ------------------------------------------------------------------
+    # Conformal prediction intervals
+    # ------------------------------------------------------------------
+
+    def conformal_halfwidth(self, coverage: float = 0.8) -> float:
+        """
+        Half-width of the split-conformal interval for a target coverage.
+
+        Uses the finite-sample-valid rank: the ceil((n+1)*coverage)-th
+        smallest absolute OOF residual. A prediction of r therefore carries
+        an interval [r - h, r + h] expected to contain the realized return
+        `coverage` of the time.
+        """
+        if self._calib_residuals is None:
+            raise RuntimeError("Call fit() before requesting intervals.")
+        n = len(self._calib_residuals)
+        rank = min(int(np.ceil((n + 1) * coverage)), n)
+        return float(self._calib_residuals[rank - 1])
+
+    def predict_interval(self, X: np.ndarray,
+                         coverage: float = 0.8):
+        """
+        Return (point, lower, upper) predicted-return arrays for X.
+        """
+        point = self.predict(X)
+        h     = self.conformal_halfwidth(coverage)
+        return point, point - h, point + h
+
+    def interval_excludes_zero(self, X: np.ndarray,
+                               coverage: float = 0.8) -> np.ndarray:
+        """
+        Boolean array: True where the conformal interval lies entirely
+        above or entirely below zero — i.e. the model is `coverage`-confident
+        the move is directional, not noise. A principled trade gate.
+        """
+        _, lo, hi = self.predict_interval(X, coverage)
+        return (lo > 0) | (hi < 0)
 
     # ------------------------------------------------------------------
     # Internal

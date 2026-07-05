@@ -29,7 +29,8 @@ class OrderManager:
         self.alerts    = alerts
 
     def execute_signal(self, signal: dict, ticker: str,
-                       price_df, dry_run: bool = False) -> dict | None:
+                       price_df, dry_run: bool = False,
+                       size_multiplier: float = 1.0) -> dict | None:
         """
         Execute a trading signal end-to-end.
 
@@ -38,6 +39,7 @@ class OrderManager:
             ticker:   Stock symbol e.g. 'AAPL'.
             price_df: OHLCV DataFrame used to compute ATR.
             dry_run:  If True, log and print but do NOT submit to Alpaca.
+            size_multiplier: Volatility-regime scale on BUY size, in (0, 1].
 
         Returns:
             Order dict if an order was submitted, None otherwise
@@ -73,6 +75,7 @@ class OrderManager:
                 self.portfolio.get_portfolio_value(),
                 current_price,
                 atr,
+                size_multiplier=size_multiplier,
             )
             if qty <= 0:
                 print(f"  {ticker}: position size rounded to 0 — skipping.")
