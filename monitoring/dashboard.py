@@ -338,7 +338,7 @@ with tab_sentiment:
         ).encode(
             x=alt.X('date:T', axis=alt.Axis(grid=False, title=None)),
             y=alt.Y('score:Q',
-                    axis=alt.Axis(title='VADER compound', gridColor=GRID)),
+                    axis=alt.Axis(title='Sentiment score', gridColor=GRID)),
             color=alt.Color('ticker:N',
                             scale=alt.Scale(range=[ACCENT, '#60A5FA',
                                                    '#FBBF24']),
