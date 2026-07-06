@@ -42,7 +42,7 @@ def run_backtest(ticker: str, start: str, end: str) -> dict:
           f"sentiment rows: {len(sentiment_df)}")
 
     # --- Model ---
-    registry = ModelRegistry()
+    registry = ModelRegistry(db=db)
     model, meta = registry.load_latest(f'ensemble_{ticker}',
                                        require_meta={'target': 'next_return'})
     if model is None:

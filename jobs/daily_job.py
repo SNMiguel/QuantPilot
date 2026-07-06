@@ -70,7 +70,7 @@ def run(dry_run: bool = False) -> None:
         sizer   = PositionSizer(max_position_pct=config.MAX_POSITION_PCT)
         portfolio = Portfolio(feed, db)
         order_mgr = OrderManager(broker, portfolio, sizer, db, alerter)
-        registry  = ModelRegistry()
+        registry  = ModelRegistry(db=db)
         sentiment_client = LLMSentiment(
             config.NEWS_API_KEY,
             model=config.LLM_MODEL,

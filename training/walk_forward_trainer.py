@@ -39,15 +39,20 @@ class WalkForwardTrainer:
     """Expanding-window walk-forward trainer for the stacking ensemble."""
 
     def __init__(self, n_splits: int = 5,
-                 retrain_window_days: int = 500):
+                 retrain_window_days: int = 500,
+                 db=None):
         """
         Args:
             n_splits:             Number of walk-forward validation folds.
             retrain_window_days:  How many most-recent trading days to use
                                   for the final production retrain.
+            db:                   Optional Database for durable model storage;
+                                  passed through to the ModelRegistry so a
+                                  promoted model survives ephemeral runners.
         """
         self.n_splits            = n_splits
         self.retrain_window_days = retrain_window_days
+        self.db                  = db
 
     # ------------------------------------------------------------------
     # Public
@@ -181,7 +186,7 @@ class WalkForwardTrainer:
         chal_metrics = self._score(y_test, challenger.predict(X_test))
 
         reg_key  = f'ensemble_{ticker}' if ticker else 'ensemble'
-        registry = ModelRegistry()
+        registry = ModelRegistry(db=self.db)
 
         # Evaluate the incumbent on the SAME window, if one exists and
         # is compatible (same target kind and feature count).

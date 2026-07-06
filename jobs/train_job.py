@@ -48,7 +48,8 @@ def train_ticker(ticker: str, db: Database, feed: AlpacaFeed,
 
     # Train
     trainer = WalkForwardTrainer(n_splits=5,
-                                 retrain_window_days=config.TRAIN_LOOKBACK_DAYS)
+                                 retrain_window_days=config.TRAIN_LOOKBACK_DAYS,
+                                 db=db)
     metrics = trainer.train(df, sentiment_df, ticker=ticker)
 
     if not metrics:

@@ -5,9 +5,9 @@ predictions, trades, and portfolio snapshots.
 """
 from sqlalchemy import (
     create_engine, MetaData, Table, Column,
-    String, Float, Integer, BigInteger, Date, DateTime, text
+    String, Float, Integer, BigInteger, Date, DateTime, LargeBinary, text
 )
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert, JSONB
 import pandas as pd
 from datetime import datetime
 
@@ -59,6 +59,19 @@ class Database:
         self.portfolio_snapshots_table = Table('portfolio_snapshots', self.metadata,
             Column('date',  Date,  primary_key=True),
             Column('value', Float),
+        )
+
+        # Trained models persisted here so they survive ephemeral CI runners.
+        # The joblib/keras bytes live in `blob`; metrics and meta mirror the
+        # local JSON manifest so load_latest can filter without deserializing.
+        self.model_registry_table = Table('model_registry', self.metadata,
+            Column('version_id', String(16), primary_key=True),
+            Column('name',       String(64)),
+            Column('framework',  String(16)),
+            Column('timestamp',  String(40)),
+            Column('metrics',    JSONB),
+            Column('meta',       JSONB),
+            Column('blob',       LargeBinary),
         )
 
     def create_tables(self) -> None:
@@ -232,6 +245,57 @@ class Database:
         query = text("SELECT date, value FROM portfolio_snapshots ORDER BY date ASC")
         with self.engine.connect() as conn:
             return pd.read_sql(query, conn, parse_dates=['date'], index_col='date')
+
+    # ------------------------------------------------------------------
+    # Model registry (durable storage for trained models)
+    # ------------------------------------------------------------------
+
+    def upsert_model(self, entry: dict, blob: bytes) -> None:
+        """
+        Persist a trained model's bytes and manifest metadata.
+
+        Args:
+            entry: Manifest dict with version_id, name, framework, timestamp,
+                   metrics, and meta.
+            blob:  Serialized model bytes (joblib for sklearn, .keras file
+                   bytes for keras).
+        """
+        stmt = pg_insert(self.model_registry_table).values(
+            version_id=entry['version_id'],
+            name=entry['name'],
+            framework=entry['framework'],
+            timestamp=entry['timestamp'],
+            metrics=entry.get('metrics', {}),
+            meta=entry.get('meta', {}),
+            blob=blob,
+        ).on_conflict_do_update(
+            index_elements=['version_id'],
+            set_={'name':      entry['name'],
+                  'framework': entry['framework'],
+                  'timestamp': entry['timestamp'],
+                  'metrics':   entry.get('metrics', {}),
+                  'meta':      entry.get('meta', {}),
+                  'blob':      blob},
+        )
+        with self.engine.begin() as conn:
+            conn.execute(stmt)
+
+    def get_model_manifest(self) -> list:
+        """Return all model manifest entries (no blobs) as a list of dicts."""
+        query = text("""
+            SELECT version_id, name, framework, timestamp, metrics, meta
+            FROM model_registry
+        """)
+        with self.engine.connect() as conn:
+            rows = conn.execute(query).mappings().all()
+        return [dict(r) for r in rows]
+
+    def get_model_blob(self, version_id: str) -> bytes:
+        """Return the serialized model bytes for a version_id, or None."""
+        query = text("SELECT blob FROM model_registry WHERE version_id = :v")
+        with self.engine.connect() as conn:
+            row = conn.execute(query, {'v': version_id}).first()
+        return bytes(row[0]) if row and row[0] is not None else None
 
 
 if __name__ == "__main__":

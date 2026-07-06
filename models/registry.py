@@ -1,11 +1,19 @@
 """
 Versioned model registry.
 Saves and loads trained models (sklearn or Keras) with associated metrics.
-All versions are tracked in a JSON manifest at MODEL_REGISTRY_PATH.
+
+Storage is two-tier. A local JSON manifest at MODEL_REGISTRY_PATH plus the
+model files on disk act as a fast cache. When a Database is supplied, that
+DB is the durable source of truth: models are also written there as blobs
+so they survive ephemeral CI runners (a weekly retrain on one runner and a
+daily job on another still see the same models). Without a db it behaves
+exactly as before - purely local - so tests need no database.
 """
+import io
 import os
 import json
 import uuid
+import tempfile
 from datetime import datetime, timezone
 
 import joblib
@@ -15,7 +23,7 @@ import numpy as np
 class ModelRegistry:
     """Save, load, and list versioned trained models."""
 
-    def __init__(self, registry_path: str = None):
+    def __init__(self, registry_path: str = None, db=None):
         if registry_path is None:
             import config
             registry_path = config.MODEL_REGISTRY_PATH
@@ -24,12 +32,28 @@ class ModelRegistry:
         self.registry_dir  = os.path.dirname(registry_path)
         os.makedirs(self.registry_dir, exist_ok=True)
 
-        # Load existing manifest or start fresh
-        if os.path.exists(registry_path):
+        # Optional durable backing store. When present it is authoritative:
+        # the manifest is read from the DB so a fresh runner sees every model.
+        self.db = db
+        if self.db is not None:
+            self.db.model_registry_table.create(self.db.engine, checkfirst=True)
+            self.manifest = self._manifest_from_db()
+        elif os.path.exists(registry_path):
             with open(registry_path, 'r') as f:
                 self.manifest = json.load(f)
         else:
             self.manifest = []
+
+    def _manifest_from_db(self) -> list:
+        """Build manifest entries from the DB, adding a local cache path."""
+        entries = self.db.get_model_manifest()
+        for e in entries:
+            ext = 'keras' if e.get('framework') == 'keras' else 'joblib'
+            e['path'] = os.path.join(
+                self.registry_dir, f"{e['version_id']}.{ext}").replace('\\', '/')
+            e['meta'] = e.get('meta') or {}
+            e['metrics'] = e.get('metrics') or {}
+        return entries
 
     # ------------------------------------------------------------------
     # Save
@@ -73,6 +97,10 @@ class ModelRegistry:
         }
         self.manifest.append(entry)
         self._save_manifest()
+
+        # Durable copy so the model survives beyond this runner/machine.
+        if self.db is not None:
+            self.db.upsert_model(entry, self._serialize(model, framework, path))
 
         print(f"Model saved: {name} [{version_id}]  metrics={metrics}")
         return version_id
@@ -161,8 +189,46 @@ class ModelRegistry:
                 return keras.models.load_model(path)
             else:
                 return joblib.load(path)
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
+            # Local cache miss - pull the blob from the durable store.
+            if self.db is not None:
+                return self._load_from_db(entry)
             return None
+
+    # ------------------------------------------------------------------
+    # Serialization (blob to/from the durable store)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _serialize(model, framework: str, path: str) -> bytes:
+        """Return the model's bytes for durable storage."""
+        if framework == 'keras':
+            # Keras must save to a path; reuse the one just written.
+            with open(path, 'rb') as f:
+                return f.read()
+        buf = io.BytesIO()
+        joblib.dump(model, buf)
+        return buf.getvalue()
+
+    def _load_from_db(self, entry: dict):
+        """Fetch the blob from the DB, cache it locally, and load it."""
+        blob = self.db.get_model_blob(entry['version_id'])
+        if blob is None:
+            return None
+        if entry['framework'] == 'keras':
+            from tensorflow import keras
+            tmp = os.path.join(self.registry_dir,
+                               f"{entry['version_id']}.keras")
+            with open(tmp, 'wb') as f:
+                f.write(blob)
+            return keras.models.load_model(tmp)
+        # Cache to disk for next time, then load.
+        try:
+            with open(entry['path'], 'wb') as f:
+                f.write(blob)
+        except OSError:
+            pass
+        return joblib.load(io.BytesIO(blob))
 
     # ------------------------------------------------------------------
     # List
