@@ -1,5 +1,5 @@
 """
-Shared fixtures. Everything is synthetic — no network, no database,
+Shared fixtures. Everything is synthetic - no network, no database,
 no API keys required.
 """
 import sys

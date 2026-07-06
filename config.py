@@ -1,5 +1,5 @@
 """
-Central configuration — reads from .env via python-dotenv.
+Central configuration - reads from .env via python-dotenv.
 Import this module anywhere credentials or trading parameters are needed.
 """
 import os
@@ -22,11 +22,11 @@ DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL")
 
 # --- Anthropic (LLM news sentiment + trade narration) ---
 # Optional. If ANTHROPIC_API_KEY is unset, the system falls back to VADER
-# sentiment and templated Discord summaries — no crash, just less insight.
+# sentiment and templated Discord summaries - no crash, just less insight.
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY")
 # Model for sentiment analysis and trade narration. Defaults to Anthropic's
 # most capable Opus tier. For this high-volume daily classification you can
-# drop to "claude-haiku-4-5" for lower cost — that is a cost/quality call
+# drop to "claude-haiku-4-5" for lower cost - that is a cost/quality call
 # left to you; set LLM_MODEL in .env to override.
 LLM_MODEL: str = os.getenv("LLM_MODEL", "claude-opus-4-8")
 
@@ -38,11 +38,11 @@ DB_URL: str = os.getenv("DB_URL")
 WATCHLIST: list = ["AAPL", "MSFT", "GOOGL"]
 
 TRAIN_LOOKBACK_DAYS: int    = 1000
-MAX_POSITION_PCT: float     = 0.15   # 15% per ticker — caps total tech exposure at 45%
+MAX_POSITION_PCT: float     = 0.15   # 15% per ticker - caps total tech exposure at 45%
 CONFIDENCE_THRESHOLD: float = 0.60   # Minimum ensemble agreement to act on a signal
 SIGNAL_THRESHOLD: float     = 0.003  # 0.3% predicted move required to trigger BUY/SELL
 
-# Per-ticker overrides — tickers not listed here fall back to SIGNAL_THRESHOLD.
+# Per-ticker overrides - tickers not listed here fall back to SIGNAL_THRESHOLD.
 # These are minimum predicted next-day RETURNS to act on. A higher bar means
 # fewer, higher-conviction trades on a noisier ticker.
 SIGNAL_THRESHOLD_OVERRIDES: dict = {

@@ -1,5 +1,5 @@
 """
-Signal generator — converts a price prediction into a trading signal.
+Signal generator - converts a price prediction into a trading signal.
 
 BUY  : predicted price is > current price by at least SIGNAL_THRESHOLD
         AND ensemble confidence >= CONFIDENCE_THRESHOLD
@@ -62,10 +62,10 @@ class SignalGenerator:
         Returns:
             dict with keys:
                 signal      : 'BUY' | 'SELL' | 'HOLD'
-                confidence  : float — passed through unchanged
-                predicted   : float — predicted price
-                current     : float — current price
-                delta_pct   : float — (predicted - current) / current
+                confidence  : float - passed through unchanged
+                predicted   : float - predicted price
+                current     : float - current price
+                delta_pct   : float - (predicted - current) / current
         """
         if current_price <= 0:
             return self._result('HOLD', current_price, predicted_price,
@@ -100,17 +100,17 @@ if __name__ == "__main__":
     sg = SignalGenerator(threshold=0.01, confidence_threshold=0.60)
 
     cases = [
-        (150.0, 153.0, 0.75, "expect BUY   — 2% up, high confidence"),
-        (150.0, 151.0, 0.75, "expect HOLD  — 0.67% up, below threshold"),
-        (150.0, 153.0, 0.50, "expect HOLD  — 2% up, low confidence"),
-        (150.0, 147.0, 0.75, "expect SELL  — 2% down, high confidence"),
-        (150.0, 150.0, 0.90, "expect HOLD  — no change"),
+        (150.0, 153.0, 0.75, "expect BUY   - 2% up, high confidence"),
+        (150.0, 151.0, 0.75, "expect HOLD  - 0.67% up, below threshold"),
+        (150.0, 153.0, 0.50, "expect HOLD  - 2% up, low confidence"),
+        (150.0, 147.0, 0.75, "expect SELL  - 2% down, high confidence"),
+        (150.0, 150.0, 0.90, "expect HOLD  - no change"),
     ]
 
     for current, predicted, conf, note in cases:
         result = sg.generate(current, predicted, conf)
         print(f"{note}")
-        print(f"  → {result}")
+        print(f"  -> {result}")
         print()
 
     print("signals/generator.py: OK")

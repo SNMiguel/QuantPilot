@@ -42,7 +42,7 @@ class ModelEvaluator:
             'MAE': mae,
             'MSE': mse,
             'RMSE': rmse,
-            'R²': r2,
+            'R2': r2,
             'MAPE': mape
         }
         
@@ -59,7 +59,7 @@ class ModelEvaluator:
         print(f"Mean Absolute Error (MAE):       ${metrics['MAE']:.2f}")
         print(f"Mean Squared Error (MSE):        ${metrics['MSE']:.2f}")
         print(f"Root Mean Squared Error (RMSE):  ${metrics['RMSE']:.2f}")
-        print(f"R² Score:                        {metrics['R²']:.4f}")
+        print(f"R2 Score:                        {metrics['R2']:.4f}")
         print(f"Mean Absolute Percentage Error:  {metrics['MAPE']:.2f}%")
         print(f"{'='*50}\n")
     
@@ -141,7 +141,7 @@ class ModelEvaluator:
             return
         
         models = list(self.results.keys())
-        metrics = ['MAE', 'RMSE', 'R²', 'MAPE']
+        metrics = ['MAE', 'RMSE', 'R2', 'MAPE']
         
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         axes = axes.ravel()
@@ -178,12 +178,12 @@ class ModelEvaluator:
         print(f"\n{'='*80}")
         print(f"{'Model Comparison Table':^80}")
         print(f"{'='*80}")
-        print(f"{'Model':<20} {'MAE':<12} {'RMSE':<12} {'R²':<12} {'MAPE':<12}")
+        print(f"{'Model':<20} {'MAE':<12} {'RMSE':<12} {'R2':<12} {'MAPE':<12}")
         print(f"{'-'*80}")
         
         for model_name, metrics in self.results.items():
             print(f"{model_name:<20} ${metrics['MAE']:<11.2f} ${metrics['RMSE']:<11.2f} "
-                  f"{metrics['R²']:<12.4f} {metrics['MAPE']:<11.2f}%")
+                  f"{metrics['R2']:<12.4f} {metrics['MAPE']:<11.2f}%")
         
         print(f"{'='*80}\n")
 

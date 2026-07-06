@@ -1,5 +1,5 @@
 """
-Ensemble model — stacks base model predictions using a Ridge meta-learner.
+Ensemble model - stacks base model predictions using a Ridge meta-learner.
 
 The meta-learner is trained on out-of-fold predictions produced with
 sklearn's TimeSeriesSplit, so every OOF prediction comes from a model
@@ -8,7 +8,7 @@ on the full training window so production predictions use all data.
 
 Confidence is directional agreement: the fraction of base models whose
 predicted sign matches the ensemble's predicted sign. With three base
-models this yields 1.0, 0.67, or 0.33 — a gate at 0.60 means "at least
+models this yields 1.0, 0.67, or 0.33 - a gate at 0.60 means "at least
 two of three models agree on direction".
 """
 import numpy as np
@@ -22,7 +22,7 @@ from sklearn.svm import SVR
 def make_base_models() -> dict:
     """
     Fresh, unfitted base estimators tuned for a NEXT-DAY RETURN target
-    (values on the order of 0.01, not price levels — hence the small
+    (values on the order of 0.01, not price levels - hence the small
     SVR epsilon; the old epsilon=0.1 would predict a constant).
     """
     return {
@@ -43,7 +43,7 @@ class EnsembleModel:
         """
         Args:
             base_models: Dict mapping model name -> sklearn estimator
-                         (fitted or not — fit() clones and refits them).
+                         (fitted or not - fit() clones and refits them).
                          Defaults to make_base_models().
         """
         self.base_models  = base_models if base_models is not None \
@@ -54,7 +54,7 @@ class EnsembleModel:
         # meta-learner to a constant.
         self.meta_learner = Ridge(alpha=1e-4)
         self.is_fitted    = False
-        # Sorted absolute out-of-fold residuals — the calibration set for
+        # Sorted absolute out-of-fold residuals - the calibration set for
         # split-conformal prediction intervals (populated in fit()).
         self._calib_residuals = None
 
@@ -93,7 +93,7 @@ class EnsembleModel:
         # Conformal calibration: the meta-learner's residuals on the
         # out-of-fold predictions. These come from base models that never
         # saw the validation rows, so they are a valid (slightly
-        # conservative — the meta-learner is a 3-feature Ridge) calibration
+        # conservative - the meta-learner is a 3-feature Ridge) calibration
         # sample for split-conformal intervals.
         oof_pred = self.meta_learner.predict(oof_stack)
         self._calib_residuals = np.sort(np.abs(oof_y - oof_pred))
@@ -167,7 +167,7 @@ class EnsembleModel:
                                coverage: float = 0.8) -> np.ndarray:
         """
         Boolean array: True where the conformal interval lies entirely
-        above or entirely below zero — i.e. the model is `coverage`-confident
+        above or entirely below zero - i.e. the model is `coverage`-confident
         the move is directional, not noise. A principled trade gate.
         """
         _, lo, hi = self.predict_interval(X, coverage)

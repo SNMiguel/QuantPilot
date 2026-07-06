@@ -1,11 +1,11 @@
 """
-LEGACY DEMO — not the production trading path.
+LEGACY DEMO - not the production trading path.
 
 This is the original single-file model-comparison demo (predicts the
 SAME-day AAPL close from full-dataset indicators). It is retained only to
 show the project's starting point; it contains the look-ahead bias the
 production pipeline was built to fix. Do NOT use it for trading or as a
-template — the live system runs through jobs/ (see README.md / CLAUDE.md).
+template - the live system runs through jobs/ (see README.md / CLAUDE.md).
 
 Kept runnable for historical reference: python main.py
 """
@@ -130,12 +130,12 @@ def main():
     print(f"Models Trained:    4 (Linear Regression, Random Forest, SVR, Neural Network)")
     print(f"Best Model:        {best_model_name}")
     print(f"Best RMSE:         ${best_results['metrics']['RMSE']:.2f}")
-    print(f"Best R² Score:     {best_results['metrics']['R²']:.4f}")
+    print(f"Best R2 Score:     {best_results['metrics']['R2']:.4f}")
     print("\nFrameworks Used:")
-    print("  • scikit-learn   - Traditional ML models")
-    print("  • TensorFlow     - Deep learning neural network")
-    print("  • pandas         - Data manipulation")
-    print("  • matplotlib     - Visualization")
+    print("  - scikit-learn   - Traditional ML models")
+    print("  - TensorFlow     - Deep learning neural network")
+    print("  - pandas         - Data manipulation")
+    print("  - matplotlib     - Visualization")
     print("="*70 + "\n")
     
     print("Project Complete! Check the 'results/' folder for visualizations.")

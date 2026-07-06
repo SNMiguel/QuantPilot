@@ -1,17 +1,17 @@
 """
-Trade narrator — turns the day's raw decision inputs into a short,
+Trade narrator - turns the day's raw decision inputs into a short,
 plain-English explanation of what the system did and why.
 
 A cron job that posts "AAPL BUY, MSFT HOLD, GOOGL SELL" tells you nothing
 about the reasoning. This asks Claude to narrate the actual numbers the
-pipeline produced — predicted return, confidence, the sentiment verdict
-and its key events, the risk gate outcome — into a few sentences a human
+pipeline produced - predicted return, confidence, the sentiment verdict
+and its key events, the risk gate outcome - into a few sentences a human
 can read over morning coffee. It is strictly grounded: the model is given
 only the computed values and told not to invent market commentary, so it
 explains the decisions rather than editorializing about the market.
 
 Fallback: with no ANTHROPIC_API_KEY (or no `anthropic` package), it emits
-a compact templated summary instead of calling the API — the daily job
+a compact templated summary instead of calling the API - the daily job
 never depends on the narrator succeeding.
 """
 import os
@@ -81,7 +81,7 @@ class TradeNarrator:
         try:
             return self._llm_narrate(portfolio_value, context)
         except Exception as exc:
-            print(f"  Note: narrator failed ({exc}) — templated summary.")
+            print(f"  Note: narrator failed ({exc}) - templated summary.")
             return self._template(portfolio_value, context)
 
     def _llm_narrate(self, portfolio_value: float, context: dict) -> str:

@@ -67,7 +67,7 @@ class AlpacaFeed:
             if bars.empty:
                 raise ValueError(f"Alpaca returned no data for {ticker}")
 
-            # Alpaca returns a MultiIndex or timezone-aware index — normalise it
+            # Alpaca returns a MultiIndex or timezone-aware index - normalise it
             if isinstance(bars.index, pd.MultiIndex):
                 bars = bars.xs(ticker, level=0)
             bars.index = pd.to_datetime(bars.index).tz_convert(None).normalize()
@@ -106,7 +106,7 @@ class AlpacaFeed:
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
 
-        # Select OHLCV columns — handle any capitalisation
+        # Select OHLCV columns - handle any capitalisation
         col_map = {c.lower(): c for c in raw.columns}
         selected = [col_map[c] for c in ('open', 'high', 'low', 'close', 'volume')
                     if c in col_map]

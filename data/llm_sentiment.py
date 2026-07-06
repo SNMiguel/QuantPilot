@@ -4,7 +4,7 @@ LLM-powered news sentiment via the Anthropic Messages API.
 Why this exists: VADER (data/news_sentiment.py) scores words in isolation.
 "Apple crushes earnings estimates" reads as negative to VADER because
 "crushes" is a violent word, and "Microsoft cuts guidance" barely
-registers. A language model reads the headline the way a trader does —
+registers. A language model reads the headline the way a trader does -
 it knows an earnings beat is bullish and a guidance cut is bearish.
 
 This module asks Claude to read the day's headlines for one ticker and
@@ -104,19 +104,19 @@ class LLMSentiment:
 
     @staticmethod
     def _build_client(anthropic_api_key: str):
-        """Return an Anthropic client, or None if unavailable (→ fallback)."""
+        """Return an Anthropic client, or None if unavailable (-> fallback)."""
         key = anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
         if not key:
             return None
         try:
             import anthropic
         except ImportError:
-            print("  Note: 'anthropic' not installed — using VADER sentiment.")
+            print("  Note: 'anthropic' not installed - using VADER sentiment.")
             return None
         try:
             return anthropic.Anthropic(api_key=key)
         except Exception as exc:
-            print(f"  Note: Anthropic client init failed ({exc}) — VADER fallback.")
+            print(f"  Note: Anthropic client init failed ({exc}) - VADER fallback.")
             return None
 
     # ------------------------------------------------------------------
@@ -130,7 +130,7 @@ class LLMSentiment:
         Returns a dict:
             {'direction', 'score', 'confidence', 'key_events',
              'source': 'llm' | 'vader', 'n_articles'}
-        Never raises — falls back to VADER on any problem.
+        Never raises - falls back to VADER on any problem.
         """
         articles = self._vader.fetch_articles(ticker, date)
 
@@ -151,7 +151,7 @@ class LLMSentiment:
             verdict["n_articles"] = len(articles)
             return verdict
         except Exception as exc:
-            print(f"  Note: LLM sentiment failed for {ticker} ({exc}) — VADER fallback.")
+            print(f"  Note: LLM sentiment failed for {ticker} ({exc}) - VADER fallback.")
             score = self._vader.score_articles(articles)
             return {
                 "direction": self._label(score),

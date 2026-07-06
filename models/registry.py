@@ -115,7 +115,7 @@ class ModelRegistry:
 
         Promotion is decided at train time by comparing incumbent and
         challenger on the SAME test window, so "latest saved" is by
-        construction the best available model — unlike load_best(),
+        construction the best available model - unlike load_best(),
         which compares metric values measured on different windows.
 
         Args:

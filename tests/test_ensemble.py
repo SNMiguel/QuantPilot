@@ -33,7 +33,7 @@ def test_predict_before_fit_raises():
 
 
 def test_base_models_refit_on_full_window(return_data):
-    """After fit(), every base model must have seen ALL training rows —
+    """After fit(), every base model must have seen ALL training rows -
     the original implementation left them fitted on the last CV fold,
     which excluded the most recent data."""
     X, y = return_data

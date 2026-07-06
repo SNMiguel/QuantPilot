@@ -10,7 +10,7 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add 18 technical indicator columns to an OHLCV DataFrame.
 
-    Does NOT mutate the input — returns a copy with indicators appended.
+    Does NOT mutate the input - returns a copy with indicators appended.
 
     Args:
         df: DataFrame with Open, High, Low, Close, Volume columns

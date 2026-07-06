@@ -1,5 +1,5 @@
 """
-Backtest job — run on demand to evaluate historical strategy performance.
+Backtest job - run on demand to evaluate historical strategy performance.
 
 Usage:
     python -m jobs.backtest_job

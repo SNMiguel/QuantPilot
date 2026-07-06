@@ -128,7 +128,7 @@ class ModelComparison:
         print("="*60)
         print(f"{best_model}")
         print(f"   RMSE: ${best_rmse:.2f}")
-        print(f"   R² Score: {self.results[best_model]['metrics']['R²']:.4f}")
+        print(f"   R2 Score: {self.results[best_model]['metrics']['R2']:.4f}")
         print("="*60 + "\n")
         
         return best_model, self.results[best_model]

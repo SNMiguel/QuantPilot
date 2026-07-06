@@ -1,5 +1,5 @@
 """
-LLM sentiment scorer — fallback correctness and stubbed-client parsing.
+LLM sentiment scorer - fallback correctness and stubbed-client parsing.
 No network and no `anthropic` package are required.
 """
 import json

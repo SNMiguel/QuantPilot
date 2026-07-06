@@ -2,7 +2,7 @@
 Event-driven backtester.
 
 Iterates over historical dates chronologically. At each step:
-  1. Compute features using only data up to that date (no leakage) —
+  1. Compute features using only data up to that date (no leakage) -
      the same get_latest_features() path the live daily job uses
   2. Predict the next-day return and generate a signal
   3. Simulate fill at the NEXT day's open price
@@ -33,7 +33,7 @@ class BacktestEngine:
             initial_capital:      Starting portfolio cash (default $100,000).
             stop_loss_pct:        Exit long position if price drops this far
                                   below entry (default 2%).
-            slippage_bps:         Adverse fill assumption in basis points —
+            slippage_bps:         Adverse fill assumption in basis points -
                                   buys fill above the open, sells below.
         """
         self.commission_per_share = commission_per_share

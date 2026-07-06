@@ -67,7 +67,7 @@ def main():
               "and a templated summary.\n")
 
     # news_api_key is unused here because we feed headlines directly, so an
-    # empty string is fine — nothing calls NewsAPI in this demo.
+    # empty string is fine - nothing calls NewsAPI in this demo.
     scorer   = LLMSentiment(news_api_key="")
     narrator = TradeNarrator()
 

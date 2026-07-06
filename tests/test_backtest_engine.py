@@ -1,5 +1,5 @@
 """
-Backtester behavior with a deterministic dummy model — verifies fills,
+Backtester behavior with a deterministic dummy model - verifies fills,
 costs, stop-loss, and that live and backtest share the same prediction
 contract (models output next-day returns).
 """
@@ -18,7 +18,7 @@ class AlwaysBullish:
 
 
 class AlwaysNeutral:
-    """Predicts exactly 0% — should never trade."""
+    """Predicts exactly 0% - should never trade."""
     def predict(self, X):
         return np.zeros(len(X))
 

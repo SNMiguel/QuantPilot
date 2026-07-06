@@ -1,7 +1,7 @@
 """
 Discord webhook alerter.
 Sends notifications on order fills, daily summaries, retrain results, and errors.
-All methods fail silently — a broken webhook never crashes a trading job.
+All methods fail silently - a broken webhook never crashes a trading job.
 """
 import requests
 from datetime import datetime, timezone
@@ -22,7 +22,7 @@ class DiscordAlerter:
         """Called when an order is submitted."""
         value = qty * price
         self._post(
-            f"**ORDER — {side.upper()}** `{ticker}`\n"
+            f"**ORDER - {side.upper()}** `{ticker}`\n"
             f"> Qty: {qty} shares @ ${price:.2f}\n"
             f"> Value: ${value:,.2f}"
         )
@@ -71,7 +71,7 @@ class DiscordAlerter:
             rmse    = m.get('rmse', 0)
             dir_acc = m.get('dir_acc', 0)
             lines.append(
-                f"> `{ticker}` — RMSE {rmse:.5f} (returns)  "
+                f"> `{ticker}` - RMSE {rmse:.5f} (returns)  "
                 f"dir. accuracy {dir_acc:.3f}"
             )
         self._post('\n'.join(lines))
@@ -126,7 +126,7 @@ if __name__ == "__main__":
         "GOOGL": {'rmse': 1.12, 'r2': 0.9928},
     })
 
-    alerter.send_error("Phase 11 test alert — ignore this message.")
+    alerter.send_error("Phase 11 test alert - ignore this message.")
 
     print("All alerts sent. Check your Discord channel.")
     print("monitoring/alerts.py: OK")

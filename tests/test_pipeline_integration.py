@@ -3,7 +3,7 @@ Integration test for the live decision path.
 
 Wires the real SignalGenerator, conformal gate, regime multiplier,
 PositionSizer, and OrderManager together with lightweight fakes for the
-broker/portfolio/db/alerter — the same composition jobs/daily_job.py uses,
+broker/portfolio/db/alerter - the same composition jobs/daily_job.py uses,
 without any network or credentials. This is the test that catches wiring
 regressions between the components even when each unit test passes.
 """
@@ -107,11 +107,11 @@ def test_sell_closes_existing_position_only():
     price = float(df['Close'].iloc[-1])
     signal = SignalGenerator(threshold=0.003).generate_from_return(price, -0.02, 0.9)
 
-    # No position → SELL is a no-op (cash account can't short)
+    # No position -> SELL is a no-op (cash account can't short)
     flat = _order_manager(FakeBroker(position=None))
     assert flat.execute_signal(signal, "AAPL", df) is None
 
-    # Held 40 shares → SELL closes exactly 40
+    # Held 40 shares -> SELL closes exactly 40
     held = FakeBroker(position={"qty": 40, "market_value": 40 * price})
     om = _order_manager(held)
     order = om.execute_signal(signal, "AAPL", df)
@@ -122,7 +122,7 @@ def test_conformal_gate_holds_a_noisy_prediction():
     """A model whose interval includes zero should never produce a trade."""
     rng = np.random.default_rng(3)
     X = rng.normal(size=(400, 15))
-    y = rng.normal(0, 0.02, 400)          # pure noise — wide intervals
+    y = rng.normal(0, 0.02, 400)          # pure noise - wide intervals
     model = EnsembleModel(make_base_models())
     model.fit(X, y, n_splits=4)
 

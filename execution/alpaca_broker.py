@@ -36,7 +36,7 @@ class AlpacaBroker:
             Alpaca order object as a dict.
 
         Raises:
-            Exception on API error — let OrderManager catch and log.
+            Exception on API error - let OrderManager catch and log.
         """
         if qty <= 0:
             raise ValueError(f"Order qty must be > 0, got {qty}")
@@ -107,7 +107,7 @@ class AlpacaBroker:
         Return True if today is (or was) a trading day.
 
         The daily job runs AFTER the 4 PM ET close, when is_market_open()
-        is always False — using the clock there would skip every session.
+        is always False - using the clock there would skip every session.
         The calendar endpoint answers the question actually being asked:
         "did the market trade today?" Market orders submitted after the
         close queue for the next session's open.

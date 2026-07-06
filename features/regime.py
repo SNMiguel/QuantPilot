@@ -8,7 +8,7 @@ distribution, and returns a size multiplier that shrinks exposure when
 volatility spikes.
 
 The classifier is intentionally simple and transparent (a rolling-vol
-percentile), not a hidden-state model — it needs no training, can't
+percentile), not a hidden-state model - it needs no training, can't
 silently break, and its output is easy to reason about on the dashboard.
 A Gaussian-HMM version is a natural future upgrade; the interface here
 (detect_regime -> dict with a size_multiplier) would not change.

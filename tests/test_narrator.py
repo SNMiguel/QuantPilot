@@ -1,4 +1,4 @@
-"""Trade narrator — templated fallback (no LLM) is correct and never raises."""
+"""Trade narrator - templated fallback (no LLM) is correct and never raises."""
 from monitoring.narrator import TradeNarrator
 
 

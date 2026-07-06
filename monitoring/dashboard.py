@@ -1,5 +1,5 @@
 """
-QuantPilot — live trading dashboard.
+QuantPilot - live trading dashboard.
 
 Design notes:
   - Theme lives in .streamlit/config.toml (near-black base, single
@@ -195,14 +195,14 @@ try:
     k1.metric("Equity", f"${account['equity']:,.2f}")
     k2.metric("Cash",   f"${account['cash']:,.2f}")
 except Exception:
-    k1.metric("Equity", "—")
-    k2.metric("Cash",   "—")
-    st.caption("Broker connection unavailable — showing database history only.")
+    k1.metric("Equity", "-")
+    k2.metric("Cash",   "-")
+    st.caption("Broker connection unavailable - showing database history only.")
 
 k3.metric("Total return",
-          f"{total_return:+.2f}%" if total_return is not None else "—")
+          f"{total_return:+.2f}%" if total_return is not None else "-")
 k4.metric("Max drawdown",
-          f"{max_dd:.2f}%" if max_dd is not None else "—",
+          f"{max_dd:.2f}%" if max_dd is not None else "-",
           help=f"Trading halts automatically above "
                f"{config.MAX_DRAWDOWN_HALT:.0%}")
 
@@ -213,7 +213,7 @@ st.markdown("")
 # ------------------------------------------------------------------
 
 if history.empty:
-    st.info("No portfolio snapshots yet — the first daily job run will "
+    st.info("No portfolio snapshots yet - the first daily job run will "
             "start the equity curve.")
 else:
     eq = history.reset_index().rename(columns={'date': 'Date',
@@ -271,7 +271,7 @@ tab_signals, tab_trades, tab_sentiment, tab_models = st.tabs(
 with tab_signals:
     preds = fetch_latest_predictions()
     if preds.empty:
-        st.info("No predictions logged yet — they appear after the next "
+        st.info("No predictions logged yet - they appear after the next "
                 "daily job run.")
     else:
         preds = preds.copy()
@@ -355,7 +355,7 @@ with tab_models:
     except Exception:
         versions = []
     if not versions:
-        st.info("No models in the registry yet — run the train job first.")
+        st.info("No models in the registry yet - run the train job first.")
     else:
         rows = []
         for v in versions:
@@ -368,7 +368,7 @@ with tab_models:
                 'Target':    meta.get('target', 'price (legacy)'),
                 'RMSE':      m.get('rmse'),
                 'Dir. acc':  m.get('dir_acc'),
-                '±80% (bps)': round(c80 * 10000, 1) if c80 is not None else None,
+                '+/-80% (bps)': round(c80 * 10000, 1) if c80 is not None else None,
                 'Saved':     v['timestamp'][:19].replace('T', ' '),
             })
         st.dataframe(
@@ -381,10 +381,10 @@ with tab_models:
         st.caption("RMSE is in next-day return units. A model is promoted "
                    "only when it beats the incumbent on the same held-out "
                    "window; directional accuracy of 0.500 is a coin flip. "
-                   "±80% is the conformal half-interval — a signal only trades "
+                   "+/-80% is the conformal half-interval - a signal only trades "
                    "when the predicted move exceeds it.")
 
 st.markdown("")
 st.caption("Data: Alpaca Markets (IEX), NewsAPI + Claude/VADER sentiment, "
-           "Neon PostgreSQL. Jobs run via GitHub Actions — daily after the "
+           "Neon PostgreSQL. Jobs run via GitHub Actions - daily after the "
            "close, retraining on Sundays.")

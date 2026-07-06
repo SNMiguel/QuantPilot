@@ -144,9 +144,9 @@ if __name__ == "__main__":
     print("Open positions  :", portfolio.get_open_positions())
     print("Portfolio value : $", f"{portfolio.get_portfolio_value():,.2f}")
 
-    # Test limit check — 10 shares of AAPL at $200
+    # Test limit check - 10 shares of AAPL at $200
     within = portfolio.is_within_limits("AAPL", 10, 200.0)
-    print(f"Within limits (10 × $200): {within}")
+    print(f"Within limits (10 x $200): {within}")
 
     # Snapshot today
     from datetime import date

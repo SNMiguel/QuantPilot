@@ -42,7 +42,7 @@ def test_training_rows_all_have_known_targets(ohlcv):
 
 
 def test_prediction_path_includes_cutoff_row(ohlcv):
-    """Live prediction needs today's features — get_latest_features keeps them."""
+    """Live prediction needs today's features - get_latest_features keeps them."""
     cutoff = ohlcv.index[-1].strftime('%Y-%m-%d')
     latest = get_latest_features(ohlcv, cutoff)
     assert latest.index[-1] == ohlcv.index[-1]

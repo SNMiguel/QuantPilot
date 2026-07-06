@@ -25,7 +25,7 @@ def test_save_and_load_latest(tmp_path):
     model, entry = reg.load_latest('ensemble_AAPL',
                                    require_meta={'target': 'next_return'})
     assert model is not None
-    # Latest saved wins, even though its stored rmse is higher —
+    # Latest saved wins, even though its stored rmse is higher -
     # promotion quality is decided at train time on a shared window.
     assert entry['metrics']['rmse'] == 0.012
 

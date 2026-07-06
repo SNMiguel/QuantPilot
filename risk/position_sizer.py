@@ -23,8 +23,8 @@ class PositionSizer:
         """
         Args:
             risk_per_trade:   Fraction of portfolio risked per trade (default 1%).
-            atr_multiplier:   Stop-loss width in ATR units (default 2×ATR).
-            max_position_pct: Hard cap — single position as fraction of portfolio.
+            atr_multiplier:   Stop-loss width in ATR units (default 2xATR).
+            max_position_pct: Hard cap - single position as fraction of portfolio.
                               Defaults to config.MAX_POSITION_PCT (0.15).
         """
         import config
@@ -41,7 +41,7 @@ class PositionSizer:
         """
         Calculate Average True Range over the last `period` rows.
 
-        True Range = max(High−Low, |High−PrevClose|, |Low−PrevClose|)
+        True Range = max(High-Low, |High-PrevClose|, |Low-PrevClose|)
 
         Args:
             df:     OHLCV DataFrame with DatetimeIndex.

@@ -54,7 +54,7 @@ def directional_accuracy(y_true: np.ndarray,
 
 def max_drawdown(equity_curve: np.ndarray) -> float:
     """
-    Maximum drawdown — largest peak-to-trough decline.
+    Maximum drawdown - largest peak-to-trough decline.
 
     Args:
         equity_curve: Array of portfolio values over time.
@@ -72,7 +72,7 @@ def max_drawdown(equity_curve: np.ndarray) -> float:
 def calmar_ratio(returns: np.ndarray,
                  equity_curve: np.ndarray) -> float:
     """
-    Calmar ratio — annualised return divided by max drawdown.
+    Calmar ratio - annualised return divided by max drawdown.
 
     Returns 0.0 if max drawdown is zero.
     """

@@ -22,7 +22,7 @@ import pandas as pd
 from features.indicators import add_indicators
 
 # Ordered list of feature columns produced by _stationary_features().
-# Keep in sync with the transform below — models are persisted against
+# Keep in sync with the transform below - models are persisted against
 # this exact layout (plus one trailing 'sentiment' column added later).
 FEATURE_COLUMNS = [
     'close_ma5', 'close_ma10', 'close_ma20', 'close_ma50',
@@ -40,7 +40,7 @@ def _stationary_features(df_ind: pd.DataFrame) -> pd.DataFrame:
     Convert raw indicator columns into scale-free features.
 
     Args:
-        df_ind: Output of add_indicators() — OHLCV plus 18 indicator columns.
+        df_ind: Output of add_indicators() - OHLCV plus 18 indicator columns.
 
     Returns:
         DataFrame with FEATURE_COLUMNS, NaN rows (indicator warmup) dropped.
@@ -103,7 +103,7 @@ def get_features_at(df: pd.DataFrame, cutoff_date: str):
     close = sliced['Close'].reindex(features.index)
     next_return = close.shift(-1) / close - 1.0
 
-    # Drop the final row — its next-day return does not exist yet
+    # Drop the final row - its next-day return does not exist yet
     valid = next_return.notna()
     X     = features[valid].values
     y     = next_return[valid].values
@@ -116,7 +116,7 @@ def get_latest_features(df: pd.DataFrame, cutoff_date: str) -> pd.DataFrame:
     """
     Build the PREDICTION feature matrix up to and including cutoff_date.
 
-    Unlike get_features_at(), the row at the cutoff date is kept — it is
+    Unlike get_features_at(), the row at the cutoff date is kept - it is
     the row the caller predicts on. Returned as a DataFrame (date index,
     FEATURE_COLUMNS) so sentiment can be merged on before predicting.
     """
@@ -125,7 +125,7 @@ def get_latest_features(df: pd.DataFrame, cutoff_date: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    # Synthetic OHLCV — no network required
+    # Synthetic OHLCV - no network required
     rng   = np.random.default_rng(42)
     dates = pd.bdate_range("2022-01-03", periods=300)
     close = pd.Series(150 * np.cumprod(1 + rng.normal(0.0005, 0.015, 300)),
