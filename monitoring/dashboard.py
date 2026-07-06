@@ -387,6 +387,6 @@ with tab_models:
                    "when the predicted move exceeds it.")
 
 st.markdown("")
-st.caption("Data: Alpaca Markets (IEX), NewsAPI + Claude/VADER sentiment, "
-           "Neon PostgreSQL. Jobs run via GitHub Actions - daily after the "
+st.caption("Data: Alpaca Markets (IEX prices + news archive), Claude/VADER "
+           "sentiment, Neon PostgreSQL. Jobs run via GitHub Actions - daily after the "
            "close, retraining on Sundays.")

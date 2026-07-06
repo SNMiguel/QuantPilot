@@ -78,14 +78,31 @@ class LLMSentiment:
     """
 
     def __init__(self, news_api_key: str, model: str = None,
-                 anthropic_api_key: str = None):
+                 anthropic_api_key: str = None,
+                 alpaca_key: str = None, alpaca_secret: str = None):
         """
         Args:
-            news_api_key:      NewsAPI key (headline source; still needed).
-            model:            Claude model id. Defaults to config.LLM_MODEL.
+            news_api_key:      Kept for the VADER scoring fallback.
+            model:             Claude model id. Defaults to config.LLM_MODEL.
             anthropic_api_key: Overrides ANTHROPIC_API_KEY from the env.
+            alpaca_key,
+            alpaca_secret:     Alpaca credentials for the headline source.
+                               Default to config so the live job and the
+                               historical backfill read the same archive.
         """
+        # VADER instance is used only for its scorer; headlines come from
+        # Alpaca so live and backfilled sentiment share one source.
         self._vader = NewsSentiment(news_api_key)
+
+        if alpaca_key is None or alpaca_secret is None:
+            try:
+                import config
+                alpaca_key    = alpaca_key or config.ALPACA_API_KEY
+                alpaca_secret = alpaca_secret or config.ALPACA_SECRET_KEY
+            except Exception:
+                pass
+        self._alpaca_key    = alpaca_key
+        self._alpaca_secret = alpaca_secret
 
         if model is None:
             try:
@@ -120,6 +137,21 @@ class LLMSentiment:
             return None
 
     # ------------------------------------------------------------------
+    # Headlines
+    # ------------------------------------------------------------------
+
+    def fetch_articles(self, ticker: str, date: str) -> list:
+        """
+        One day's headlines for a ticker, from Alpaca's news archive.
+
+        This is the single headline source shared with the historical
+        backfill. Returns [] on any error (then sentiment is neutral).
+        """
+        from data.alpaca_news import fetch_daily_articles
+        return fetch_daily_articles(ticker, date,
+                                    self._alpaca_key, self._alpaca_secret)
+
+    # ------------------------------------------------------------------
     # Scoring
     # ------------------------------------------------------------------
 
@@ -132,7 +164,7 @@ class LLMSentiment:
              'source': 'llm' | 'vader', 'n_articles'}
         Never raises - falls back to VADER on any problem.
         """
-        articles = self._vader.fetch_articles(ticker, date)
+        articles = self.fetch_articles(ticker, date)
 
         if not self.enabled or not articles:
             score = self._vader.score_articles(articles)

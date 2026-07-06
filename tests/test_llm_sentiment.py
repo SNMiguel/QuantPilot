@@ -42,7 +42,7 @@ def scorer():
 
 
 def test_falls_back_to_vader_without_client(scorer, monkeypatch):
-    monkeypatch.setattr(scorer._vader, "fetch_articles",
+    monkeypatch.setattr(scorer, "fetch_articles",
                         lambda t, d: [{"title": "Apple beats earnings",
                                        "description": "strong quarter"}])
     out = scorer.get_daily_analysis("AAPL", "2026-01-02")
@@ -52,7 +52,7 @@ def test_falls_back_to_vader_without_client(scorer, monkeypatch):
 
 
 def test_empty_news_is_neutral(scorer, monkeypatch):
-    monkeypatch.setattr(scorer._vader, "fetch_articles", lambda t, d: [])
+    monkeypatch.setattr(scorer, "fetch_articles", lambda t, d: [])
     out = scorer.get_daily_analysis("AAPL", "2026-01-02")
     assert out["score"] == 0.0
     assert out["confidence"] == 0.0
@@ -60,7 +60,7 @@ def test_empty_news_is_neutral(scorer, monkeypatch):
 
 
 def test_llm_path_parses_and_clamps(scorer, monkeypatch):
-    monkeypatch.setattr(scorer._vader, "fetch_articles",
+    monkeypatch.setattr(scorer, "fetch_articles",
                         lambda t, d: [{"title": "x", "description": "y"}])
     # Out-of-range score must clamp to [-1, 1]; confidence to [0, 1].
     scorer._client = _StubClient({
@@ -76,7 +76,7 @@ def test_llm_path_parses_and_clamps(scorer, monkeypatch):
 
 
 def test_get_daily_score_upserts(scorer, monkeypatch):
-    monkeypatch.setattr(scorer._vader, "fetch_articles", lambda t, d: [])
+    monkeypatch.setattr(scorer, "fetch_articles", lambda t, d: [])
     calls = {}
     class _DB:
         def upsert_sentiment(self, date, ticker, score):

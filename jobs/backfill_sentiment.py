@@ -19,62 +19,22 @@ Usage:
     python -m jobs.backfill_sentiment --ticker AAPL --vader   # skip LLM
 """
 import argparse
-from collections import defaultdict
 from datetime import date, timedelta
-
-import requests
 
 import config
 from data.database import Database
 from data.llm_sentiment import LLMSentiment
+from data.alpaca_news import fetch_news_range
 
-_NEWS_URL = "https://data.alpaca.markets/v1beta1/news"
 _MAX_HEADLINES_PER_DAY = 8  # keep the per-day LLM prompt small
 
 
 def fetch_news(ticker: str, start: str, end: str) -> dict:
-    """
-    Page through Alpaca news and bucket articles by calendar day.
-
-    Returns {date_str: [ {title, description}, ... ]}.
-    """
-    headers = {
-        "APCA-API-KEY-ID": config.ALPACA_API_KEY,
-        "APCA-API-SECRET-KEY": config.ALPACA_SECRET_KEY,
-    }
-    by_day = defaultdict(list)
-    page_token = None
-    total = 0
-
-    while True:
-        params = {
-            "symbols": ticker,
-            "start": start,
-            "end": end,
-            "limit": 50,
-            "sort": "asc",
-        }
-        if page_token:
-            params["page_token"] = page_token
-
-        resp = requests.get(_NEWS_URL, headers=headers, params=params, timeout=20)
-        resp.raise_for_status()
-        payload = resp.json()
-
-        for a in payload.get("news", []):
-            day = a.get("created_at", "")[:10]
-            if not day:
-                continue
-            by_day[day].append({
-                "title": a.get("headline", "") or "",
-                "description": a.get("summary", "") or "",
-            })
-            total += 1
-
-        page_token = payload.get("next_page_token")
-        if not page_token:
-            break
-
+    """Bucket Alpaca news by day via the shared headline source."""
+    by_day = fetch_news_range(ticker, start, end,
+                              config.ALPACA_API_KEY, config.ALPACA_SECRET_KEY,
+                              max_per_day=_MAX_HEADLINES_PER_DAY)
+    total = sum(len(v) for v in by_day.values())
     print(f"  Fetched {total} articles across {len(by_day)} days")
     return by_day
 
