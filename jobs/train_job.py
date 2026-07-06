@@ -41,7 +41,7 @@ def train_ticker(ticker: str, db: Database, feed: AlpacaFeed,
     sentiment_df = db.get_sentiment(ticker, start, end)
 
     if df.empty:
-        print(f"  WARN: No price data for {ticker} — skipping")
+        print(f"  WARN: No price data for {ticker} - skipping")
         return {}
 
     print(f"  {len(df)} price rows  |  {len(sentiment_df)} sentiment rows")
@@ -64,7 +64,7 @@ def train_ticker(ticker: str, db: Database, feed: AlpacaFeed,
 def run(tickers: list[str] | None = None) -> None:
     today = date.today().isoformat()
     print(f"\n{'='*55}")
-    print(f"  Train Job — {today}")
+    print(f"  Train Job - {today}")
     print(f"{'='*55}")
 
     alerter  = DiscordAlerter(config.DISCORD_WEBHOOK_URL)

@@ -12,7 +12,7 @@ promotion decision:
     so RMSE is in return units and directional accuracy is reported.
   - Promotion: the incumbent registry model and the new challenger are
     both evaluated on the SAME held-out window. The challenger is saved
-    only if it wins there — comparing stored metrics from different
+    only if it wins there - comparing stored metrics from different
     time windows (the old behaviour) rewards whichever model was
     evaluated during a calmer market.
 """
@@ -26,6 +26,13 @@ from models.registry import ModelRegistry
 from training.metrics import directional_accuracy
 
 TARGET_KIND = 'next_return'   # stamped into registry meta on every save
+
+# Promotion guardrails. Daily-return RMSE differences between retrains are
+# mostly noise, so a challenger must beat the incumbent's RMSE by a real
+# relative margin AND not regress on directional accuracy. Without this a
+# 0.0001 RMSE flicker could demote a better model on a single window.
+_PROMOTION_RMSE_MARGIN = 0.02   # challenger RMSE must be >=2% lower
+_PROMOTION_DIRACC_SLACK = 0.01  # allow at most this much dir_acc regression
 
 
 class WalkForwardTrainer:
@@ -55,7 +62,7 @@ class WalkForwardTrainer:
         Args:
             df:            Raw OHLCV DataFrame with DatetimeIndex.
             sentiment_df:  Sentiment scores DataFrame (date index, 'score'
-                           col). Can be empty — sentiment defaults to 0.0.
+                           col). Can be empty - sentiment defaults to 0.0.
             ticker:        Ticker symbol e.g. 'AAPL'. Registry key prefix.
 
         Returns:
@@ -66,7 +73,7 @@ class WalkForwardTrainer:
         if df is None or df.empty:
             raise ValueError(
                 f"Empty DataFrame for ticker '{ticker}'. "
-                "Check data fetch — Alpaca may have fallen back to yfinance "
+                "Check data fetch - Alpaca may have fallen back to yfinance "
                 "with no result."
             )
 
@@ -128,7 +135,7 @@ class WalkForwardTrainer:
             X_test,  y_test  = X_all[test_mask],  y_all[test_mask]
 
             if len(X_train) < 60 or len(X_test) < 10:
-                print(f"  WARN: skipping fold {i} — not enough data "
+                print(f"  WARN: skipping fold {i} - not enough data "
                       f"(train={len(X_train)}, test={len(X_test)})")
                 continue
 
@@ -194,11 +201,13 @@ class WalkForwardTrainer:
             print(f"  Incumbent  : RMSE={inc_metrics['rmse']:.5f}  "
                   f"dir_acc={inc_metrics['dir_acc']:.3f}")
         else:
-            print("  Incumbent  : none (or incompatible) — challenger "
+            print("  Incumbent  : none (or incompatible) - challenger "
                   "promoted by default")
 
-        if inc_metrics is None or \
-           chal_metrics['rmse'] < inc_metrics['rmse']:
+        promote = inc_metrics is None or self._beats_incumbent(
+            chal_metrics, inc_metrics)
+
+        if promote:
             registry.save(
                 challenger,
                 name=reg_key,
@@ -217,7 +226,21 @@ class WalkForwardTrainer:
                 },
             )
         else:
-            print("  Registry unchanged — incumbent wins on this window.")
+            print("  Registry unchanged - challenger did not clear the "
+                  "promotion margin.")
+
+    @staticmethod
+    def _beats_incumbent(chal: dict, inc: dict) -> bool:
+        """
+        Promote only on a materially better model, not noise.
+
+        Requires the challenger's RMSE to be at least _PROMOTION_RMSE_MARGIN
+        lower (relative) than the incumbent's, and its directional accuracy
+        to be no worse than the incumbent's by more than _PROMOTION_DIRACC_SLACK.
+        """
+        rmse_ok = chal['rmse'] <= inc['rmse'] * (1.0 - _PROMOTION_RMSE_MARGIN)
+        diracc_ok = chal['dir_acc'] >= inc['dir_acc'] - _PROMOTION_DIRACC_SLACK
+        return rmse_ok and diracc_ok
 
     # ------------------------------------------------------------------
     # Helpers
