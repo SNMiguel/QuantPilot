@@ -17,14 +17,17 @@ QuantPilot trades AAPL, MSFT, and GOOGL on Alpaca paper markets with zero human 
 
 ## The Honest Numbers
 
-Most "stock prediction" repos show a 0.99 R2 and a beautiful equity curve. Both are almost always leakage. Here is what QuantPilot actually reports on itself, walk-forward validated, with commission and slippage:
+Most "stock prediction" repos show a 0.99 R2 and a beautiful equity curve. Both are almost always leakage. Here is what QuantPilot actually reports on itself across all three tickers, walk-forward validated over 2.5 years, with commission and slippage, and with a full multi-year Claude-scored sentiment history in the features:
 
-| Metric | Value | What it means |
-|---|---|---|
-| Directional accuracy | 0.49 - 0.54 | Coin flip is 0.500. There is no edge here yet. |
-| R2 on next-day returns | ~0.0 (negative) | Honest. Daily returns are nearly a random walk. |
-| Backtest (AAPL, 2.5 yrs) | +2.2% | The conformal gate found almost no trade worth taking. |
-| Buy-and-hold same window | +81.4% | Printed in every backtest report, on the same window. |
+| Ticker | Walk-forward dir. acc | Strategy return | Buy-and-hold | Trades |
+|---|---|---|---|---|
+| AAPL | 0.504 | +1.9% | +84.3% | 2 |
+| MSFT | 0.478 | -0.4% | -8.9% | 2 |
+| GOOGL | 0.501 | +5.0% | +133.4% | 7 |
+
+Directional accuracy of 0.478 - 0.504 is a coin flip (0.500). R2 on next-day returns is ~0.0 (slightly negative) - daily returns are nearly a random walk, and the system says so. Read the results honestly: buy-and-hold beats the strategy on the two names that rose. MSFT is the only case the strategy "wins", and only because MSFT fell 8.9% while the strategy sat mostly in cash - capital preservation in a downtrend, not predictive skill. **There is no edge here yet, and the system is built to tell you that rather than hide it.**
+
+When those models were retrained on the full three-ticker sentiment history, none was promoted: each challenger's RMSE improvement over the incumbent was noise (under the 2% margin), so the promotion gate correctly kept the existing models. Three chances to promote a worse-or-equal model, three rejections.
 
 This is not a failure of engineering - it is the engineering succeeding at its actual job. The early version of this codebase predicted same-day prices and scored R2 = 0.99; that number was a leakage artifact, and finding and killing it reshaped the entire system. Every design decision below exists to make that class of self-deception structurally impossible:
 
