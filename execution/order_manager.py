@@ -9,8 +9,8 @@ class OrderManager:
     """
     Orchestrates the full order lifecycle for a single signal.
 
-    Checks risk limits → sizes position → submits order →
-    logs to DB → sends Discord alert.
+    Checks risk limits -> sizes position -> submits order ->
+    logs to DB -> sends Discord alert.
     """
 
     def __init__(self, broker, portfolio, sizer, db, alerts):
@@ -47,28 +47,28 @@ class OrderManager:
         """
         action = signal.get('signal', 'HOLD')
 
-        # Step 1 — skip holds immediately
+        # Step 1 - skip holds immediately
         if action == 'HOLD':
-            print(f"  {ticker}: HOLD — no order submitted.")
+            print(f"  {ticker}: HOLD - no order submitted.")
             return None
 
         current_price = signal['current']
         position      = self.broker.get_position(ticker)
 
-        # Step 2 — position-aware sizing.
+        # Step 2 - position-aware sizing.
         # SELL closes the actual held quantity (a cash account cannot
         # short, and selling a freshly-sized qty would either be rejected
         # or produce an accidental partial exit). BUY only opens a new
-        # position — no stacking onto an existing one.
+        # position - no stacking onto an existing one.
         if action == 'SELL':
             if position is None or position['qty'] <= 0:
-                print(f"  {ticker}: SELL signal but no open position — skipping.")
+                print(f"  {ticker}: SELL signal but no open position - skipping.")
                 return None
             qty = position['qty']
         else:  # BUY
             if position is not None and position['qty'] > 0:
                 print(f"  {ticker}: already holding {position['qty']} shares "
-                      f"— skipping additional BUY.")
+                      f"- skipping additional BUY.")
                 return None
             atr = self.sizer.calculate_atr(price_df)
             qty = self.sizer.size(
@@ -78,12 +78,12 @@ class OrderManager:
                 size_multiplier=size_multiplier,
             )
             if qty <= 0:
-                print(f"  {ticker}: position size rounded to 0 — skipping.")
+                print(f"  {ticker}: position size rounded to 0 - skipping.")
                 return None
 
-            # Step 3 — risk limit check (BUY only; SELL reduces exposure)
+            # Step 3 - risk limit check (BUY only; SELL reduces exposure)
             if not self.portfolio.is_within_limits(ticker, qty, current_price):
-                print(f"  {ticker}: blocked by risk limit — skipping.")
+                print(f"  {ticker}: blocked by risk limit - skipping.")
                 return None
 
         side = action.lower()   # 'buy' or 'sell'
@@ -91,7 +91,7 @@ class OrderManager:
         print(f"  {ticker}: {action}  {qty} shares @ ~${current_price:.2f}"
               f"  (confidence={signal['confidence']:.2f})")
 
-        # Step 4 — dry run exits here
+        # Step 4 - dry run exits here
         if dry_run:
             print(f"  [DRY RUN] Order NOT submitted.")
             return {
@@ -102,7 +102,7 @@ class OrderManager:
                 'status': 'dry_run',
             }
 
-        # Step 5 — submit order
+        # Step 5 - submit order
         try:
             order = self.broker.submit_order(ticker, qty, side)
         except Exception as e:
@@ -110,7 +110,7 @@ class OrderManager:
             self.alerts.send_error(f"Order failed {ticker} {action}: {e}")
             return None
 
-        # Step 6 — log to database
+        # Step 6 - log to database
         self.db.log_trade(
             order_id=order['id'],
             ticker=ticker,
@@ -120,7 +120,7 @@ class OrderManager:
             status=order['status'],
         )
 
-        # Step 7 — send Discord alert
+        # Step 7 - send Discord alert
         self.alerts.send_order_alert(ticker, action, qty, current_price)
 
         print(f"  Order submitted: {order['id']}  status={order['status']}")
@@ -128,5 +128,5 @@ class OrderManager:
 
 
 if __name__ == "__main__":
-    print("OrderManager requires live broker/portfolio/db — tested via daily_job.py")
+    print("OrderManager requires live broker/portfolio/db - tested via daily_job.py")
     print("execution/order_manager.py: OK")

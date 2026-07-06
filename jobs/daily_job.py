@@ -1,9 +1,9 @@
 """
-Daily trading job — runs once per day after market close.
+Daily trading job - runs once per day after market close.
 
 Execution order:
   1.  Cancel any leftover open orders
-  2.  Check today was a trading day (calendar, not clock — the job runs
+  2.  Check today was a trading day (calendar, not clock - the job runs
       after the close, so the clock always says "closed")
   3.  Circuit breaker: halt if portfolio drawdown exceeds the cap
   4.  Fetch latest price bars for each ticker (cached in DB)
@@ -44,11 +44,13 @@ from monitoring.narrator import TradeNarrator
 from training.walk_forward_trainer import TARGET_KIND
 
 
-def run() -> None:
+def run(dry_run: bool = False) -> None:
     today = date.today().isoformat()
     print(f"\n{'='*55}")
-    print(f"  Daily Job — {today}")
+    print(f"  Daily Job - {today}")
     print(f"  Live trading: {config.LIVE_TRADING}")
+    if dry_run:
+        print("  DRY RUN: no orders submitted, no Discord summary sent")
     print(f"{'='*55}")
 
     alerter = DiscordAlerter(config.DISCORD_WEBHOOK_URL)
@@ -89,8 +91,12 @@ def run() -> None:
         # 3. Trading-day check (calendar, not clock)
         # ------------------------------------------------------------------
         if not broker.market_traded_today():
-            print("No trading session today (weekend/holiday) — exiting.")
-            return
+            if dry_run:
+                print("No trading session today (weekend/holiday), but "
+                      "dry run continues to exercise the full path.")
+            else:
+                print("No trading session today (weekend/holiday) - exiting.")
+                return
 
         # ------------------------------------------------------------------
         # 4. Circuit breaker
@@ -98,7 +104,7 @@ def run() -> None:
         drawdown = portfolio.get_max_drawdown()
         if drawdown > config.MAX_DRAWDOWN_HALT:
             msg = (f"Circuit breaker: drawdown {drawdown:.1%} exceeds "
-                   f"{config.MAX_DRAWDOWN_HALT:.0%} cap. No trades today — "
+                   f"{config.MAX_DRAWDOWN_HALT:.0%} cap. No trades today - "
                    f"manual review required.")
             print(msg)
             alerter.send_error(msg)
@@ -106,7 +112,7 @@ def run() -> None:
             return
 
         # ------------------------------------------------------------------
-        # 5–10. Per-ticker loop
+        # 5-10. Per-ticker loop
         # ------------------------------------------------------------------
         all_signals: dict = {}
         all_context: dict = {}   # per-ticker inputs for the trade narrator
@@ -118,7 +124,7 @@ def run() -> None:
             start_date = "2022-01-01"
             df = feed.get_historical_bars(ticker, start_date, today, db=db)
             if df.empty:
-                print(f"  WARN: no price data — skipping {ticker}")
+                print(f"  WARN: no price data - skipping {ticker}")
                 continue
 
             # 5b. Fetch sentiment (LLM verdict; VADER fallback)
@@ -133,24 +139,24 @@ def run() -> None:
             # 6. Latest feature row (leakage-free, includes today)
             feature_df = get_latest_features(df, today)
             if feature_df.empty:
-                print(f"  WARN: not enough feature rows — skipping {ticker}")
+                print(f"  WARN: not enough feature rows - skipping {ticker}")
                 continue
             feature_df = merge_sentiment(feature_df, sentiment_df)
 
             # 7. Load the latest promoted model for this ticker.
             # The target filter refuses models trained to predict price
-            # levels — treating those outputs as returns would be
+            # levels - treating those outputs as returns would be
             # catastrophic.
             model, meta = registry.load_latest(
                 f'ensemble_{ticker}',
                 require_meta={'target': TARGET_KIND},
             )
             if model is None:
-                print(f"  WARN: no {TARGET_KIND} model for {ticker} — "
+                print(f"  WARN: no {TARGET_KIND} model for {ticker} - "
                       f"run train_job first")
                 continue
             if meta.get('meta', {}).get('n_features') != feature_df.shape[1]:
-                print(f"  WARN: feature count mismatch for {ticker} — "
+                print(f"  WARN: feature count mismatch for {ticker} - "
                       f"retrain required, skipping")
                 continue
             print(f"  Model {meta['version_id']}  "
@@ -190,7 +196,7 @@ def run() -> None:
                             X_today, config.CONFORMAL_COVERAGE)[0])
                     if not directional:
                         print(f"  Conformal gate: {config.CONFORMAL_COVERAGE:.0%} "
-                              f"interval includes zero — downgrading "
+                              f"interval includes zero - downgrading "
                               f"{signal['signal']} to HOLD")
                         signal['signal'] = 'HOLD'
                 except Exception as exc:
@@ -208,19 +214,23 @@ def run() -> None:
                 confidence=confidence,
             )
 
-            # 10. Volatility regime → position-size scaling
+            # 10. Volatility regime -> position-size scaling
             regime = detect_regime(df)
             if regime['regime'] not in ('calm', 'normal'):
                 print(f"  Regime: {regime['regime']} "
-                      f"(vol pct {regime['percentile']:.0%}) → "
+                      f"(vol pct {regime['percentile']:.0%}) -> "
                       f"size x{regime['size_multiplier']:.2f}")
 
             # 11. Execute
             order = order_mgr.execute_signal(
-                signal, ticker, df,
+                signal, ticker, df, dry_run=dry_run,
                 size_multiplier=regime['size_multiplier'])
-            if order:
+            placed = order is not None and order.get('status') != 'dry_run'
+            if order and placed:
                 print(f"  Order submitted: {order.get('id', order)}")
+            elif order and not placed:
+                print(f"  Dry run: would place {signal['signal']} "
+                      f"({order.get('qty', '?')} sh), not submitted")
             else:
                 print(f"  No order placed (HOLD, flat, or risk limit)")
 
@@ -231,8 +241,9 @@ def run() -> None:
                 'confidence':       confidence,
                 'sentiment':        sentiment_analysis,
                 'regime':           regime['regime'],
-                'order':            order is not None,
-                'blocked':          signal['signal'] != 'HOLD' and order is None,
+                'order':            placed,
+                'blocked':          (not dry_run and signal['signal'] != 'HOLD'
+                                     and not placed),
             }
 
         # ------------------------------------------------------------------
@@ -247,8 +258,11 @@ def run() -> None:
         # ------------------------------------------------------------------
         rationale = narrator.narrate(portfolio_value, all_context)
         print(f"\nRationale: {rationale}")
-        alerter.send_daily_summary(all_signals, portfolio_value, rationale=rationale)
-        print("Discord summary sent")
+        if dry_run:
+            print("Dry run: Discord summary not sent")
+        else:
+            alerter.send_daily_summary(all_signals, portfolio_value, rationale=rationale)
+            print("Discord summary sent")
         print(f"\n{'='*55}")
         print("  Daily job complete")
         print(f"{'='*55}\n")
@@ -261,4 +275,11 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+    parser = argparse.ArgumentParser(description="Run the daily trade cycle")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Exercise the full path without submitting "
+                             "orders or sending the Discord summary; also "
+                             "bypasses the trading-day calendar check.")
+    args = parser.parse_args()
+    run(dry_run=args.dry_run)
