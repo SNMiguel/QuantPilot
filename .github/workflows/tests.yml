@@ -21,9 +21,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      # The test suite is fully synthetic — no API keys, database, or
+      # The test suite is fully synthetic - no API keys, database, or
       # tensorflow needed (models/__init__.py degrades gracefully).
-      # The test suite is synthetic — no API keys, DB, tensorflow, nltk, or
+      # The test suite is synthetic - no API keys, DB, tensorflow, nltk, or
       # anthropic needed (those paths degrade gracefully). `requests` is the
       # one import the sentiment module needs at module load.
       - name: Install test dependencies
