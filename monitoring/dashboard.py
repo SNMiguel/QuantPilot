@@ -351,7 +351,9 @@ with tab_sentiment:
 
 with tab_models:
     try:
-        versions = ModelRegistry().list_versions()
+        # Models live in the DB (durable across runners); read them from
+        # there so the deployed dashboard sees the same registry the jobs do.
+        versions = ModelRegistry(db=get_db()).list_versions()
     except Exception:
         versions = []
     if not versions:
