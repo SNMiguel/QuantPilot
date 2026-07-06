@@ -1,133 +1,190 @@
-# QuantPilot — Automated Paper Trading System
+# QuantPilot
 
-An end-to-end automated trading system that combines ensemble ML models, live market data, news sentiment analysis, and risk management to trade AAPL, MSFT, and GOOGL on Alpaca's paper trading platform.
+**An automated trading system rigorous enough to tell you the truth: it has no alpha yet.**
 
 ![Tests](https://github.com/SNMiguel/QuantPilot/actions/workflows/tests.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-1.4.0-orange)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-1.4-orange)
+![Claude](https://img.shields.io/badge/LLM-Claude-8A2BE2)
 ![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-red)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## What It Does
-
-Every weekday after market close, QuantPilot automatically:
-1. Fetches the latest price bar and news sentiment for each ticker
-2. Runs leakage-free feature engineering — stationary indicator transforms computed only on past data, targeting the **next-day return** (never the same-day price, which a model can trivially reconstruct from its own features)
-3. Loads the latest promoted ensemble model per ticker from the registry
-4. Generates a BUY / SELL / HOLD signal with a directional-agreement confidence score
-5. Sizes the position using ATR-based risk management (max 15% portfolio exposure)
-6. Submits the order to Alpaca and logs the trade and prediction to the database
-7. Snapshots portfolio value and sends a Discord summary
-
-Every Sunday, models are retrained on fresh data. A new model is promoted only if it beats the incumbent **on the same held-out window** — comparing metrics measured on different weeks rewards whichever model was tested during a calmer market.
+QuantPilot trades AAPL, MSFT, and GOOGL on Alpaca paper markets with zero human interaction: GitHub Actions fires the pipeline after every close, models retrain weekly, every decision is explained in plain English on Discord, and a live dashboard shows the results. It is a complete production ML system - data, features, models, risk, execution, monitoring, CI - built around one governing principle: **make it impossible to fool yourself.**
 
 **Live dashboard:** [quantpilot.streamlit.app](https://quantpilot.streamlit.app)
 
-## Honest Evaluation, By Design
+---
 
-Daily equity returns are mostly noise; any pipeline that reports a near-perfect R² on price levels is measuring leakage, not skill. QuantPilot is built to make that failure mode impossible to hide:
+## The Honest Numbers
 
-- The target is the next-day return, so a persistence baseline ("predict 0") scores exactly zero skill
-- **Directional accuracy** is reported everywhere (0.500 = coin flip)
-- Every backtest report includes a **buy-and-hold baseline** on the same window, with commission and slippage applied to the strategy
-- The test suite ([tests/](tests/)) contains regression tests for the three leakage bugs found and fixed in this codebase: same-day targets, KFold-into-the-future stacking, and stale-fold base models
+Most "stock prediction" repos show a 0.99 R2 and a beautiful equity curve. Both are almost always leakage. Here is what QuantPilot actually reports on itself, walk-forward validated, with commission and slippage:
+
+| Metric | Value | What it means |
+|---|---|---|
+| Directional accuracy | 0.49 - 0.54 | Coin flip is 0.500. There is no edge here yet. |
+| R2 on next-day returns | ~0.0 (negative) | Honest. Daily returns are nearly a random walk. |
+| Backtest (AAPL, 2.5 yrs) | +2.2% | The conformal gate found almost no trade worth taking. |
+| Buy-and-hold same window | +81.4% | Printed in every backtest report, on the same window. |
+
+This is not a failure of engineering - it is the engineering succeeding at its actual job. The early version of this codebase predicted same-day prices and scored R2 = 0.99; that number was a leakage artifact, and finding and killing it reshaped the entire system. Every design decision below exists to make that class of self-deception structurally impossible:
+
+- **The target is the next-day return**, never a price level. A price-level model can trivially reconstruct its target from its own features and look brilliant. The registry stamps every model with its target kind, and jobs refuse to load a model trained for anything else.
+- **Stacking uses `TimeSeriesSplit`**, never KFold - KFold leaks the future into out-of-fold predictions and inflates the meta-learner.
+- **A challenger replaces the incumbent model only by beating it on the same held-out window, by a real margin** (2% relative RMSE, no directional regression). This gate exists because a noise-level 0.0001 RMSE "win" once promoted a model that backtested strictly worse - the system caught its own mistake.
+- **Trades must clear a conformal gate**: the 80% prediction interval, calibrated from out-of-fold residuals, must exclude zero. Not a vibes-based confidence score - a finite-sample statistical guarantee.
+- **Every backtest prints the buy-and-hold baseline** on the same window, with the strategy paying commission and slippage while the baseline doesn't pay a management fee.
+- **The test suite contains regression tests for the three leakage bugs found and fixed here**: same-day targets, KFold-into-the-future stacking, and stale-fold base models.
+
+The result: a system that correctly refuses to trade on noise, sits mostly in cash, and reports a coin flip as a coin flip. Ask yourself which repo you'd rather have managing money - this one, or the one with the perfect backtest.
+
+---
+
+## What Runs Every Day
+
+Weekdays at 21:30 UTC (after the NYSE close), a GitHub Actions runner executes the full cycle - no server, no human:
+
+```
+prices (Alpaca)          news (NewsAPI)
+      |                        |
+      v                        v
+leakage-free features    Claude reads the headlines
+(stationary transforms,  -> structured verdict:
+ next-day return target)    direction, score, events
+      |                        |
+      +-----------+------------+
+                  v
+     per-ticker stacked ensemble
+     (LR + RF + SVR -> Ridge meta-learner)
+                  |
+                  v
+     conformal gate: 80% interval
+     must exclude zero, or HOLD
+                  |
+                  v
+     volatility regime check
+     (turbulent tape -> 0.4x size)
+                  |
+                  v
+     ATR position sizing, 15% cap,
+     drawdown circuit breaker
+                  |
+                  v
+     position-aware execution (Alpaca)
+                  |
+                  v
+     Claude narrates WHY, in plain
+     English -> Discord + database
+```
+
+Sundays, every model retrains on fresh data and faces the promotion gate. Models persist as blobs in Postgres, so they survive the ephemeral CI runners - the Sunday trainer and the Monday trader are different machines that share one durable registry.
+
+A sample of what lands on Discord each evening, generated from the day's actual numbers:
+
+> All three positions remain on HOLD. AAPL and GOOGL show modest positive expected returns with moderate confidence, but neutral sentiment and turbulent volatility regimes warrant caution. MSFT's predicted return of +0.160% is paired with low confidence of 0.33, making it unsuitable for a buy signal. No risk gates were triggered.
+
+---
+
+## The Intelligence Layer
+
+Four components add judgment on top of the forecaster. All four degrade gracefully - remove the Anthropic key and the system keeps trading on simpler paths, never crashing.
+
+**LLM news sentiment** - [data/llm_sentiment.py](data/llm_sentiment.py)
+VADER scores words in isolation: "Apple crushes earnings estimates" reads as *negative* because "crushes" is a violent word. Claude reads the headline the way a trader does and returns a structured verdict - direction, score in [-1, 1], confidence, and the concrete events it keyed on ("Q3 earnings beat", "antitrust ruling"). Same output contract as the VADER path, so it drops into the existing feature and DB column. Falls back to VADER without the key.
+
+**Conformal prediction intervals** - [models/ensemble.py](models/ensemble.py)
+Split-conformal calibration from out-of-fold residuals wraps every point prediction in an interval with finite-sample coverage (empirically verified in the test suite). The trade gate follows: act only when the 80% interval excludes zero. This replaced a heuristic confidence threshold with a statistical statement about whether the predicted move is distinguishable from noise.
+
+**Volatility-regime sizing** - [features/regime.py](features/regime.py)
+Realized-vol percentile classifies the tape as calm / normal / elevated / turbulent and scales position size to 0.4x in turbulent markets. Deliberately a transparent rolling percentile rather than a hidden-state model: it needs no training, cannot silently break, and its output is legible on a dashboard. Applied identically in live trading and the backtester.
+
+**Trade narrator** - [monitoring/narrator.py](monitoring/narrator.py)
+Claude receives only the day's computed values - predicted return, confidence, sentiment events, regime, risk-gate outcomes - and writes a few grounded sentences explaining why the system did what it did. It is instructed not to invent market commentary; it explains decisions, it does not editorialize. Falls back to a templated summary.
+
+Try the layer standalone with nothing but an Anthropic key - no broker, no database:
+
+```bash
+python demo_local.py
+```
+
+---
 
 ## Architecture
 
 ```
 QuantPilot/
-├── config.py                     # All settings loaded from .env
+├── config.py                     # All settings from .env; safe defaults
 │
 ├── data/
-│   ├── database.py               # PostgreSQL via SQLAlchemy (Neon.tech)
-│   ├── alpaca_feed.py            # Live + historical price data (IEX feed)
-│   ├── news_sentiment.py         # NewsAPI + VADER sentiment (fallback path)
-│   └── llm_sentiment.py          # Claude structured event extraction (+ VADER fallback)
+│   ├── alpaca_feed.py            # Live + historical prices, DB-cached
+│   ├── news_sentiment.py         # NewsAPI + VADER (fallback path)
+│   ├── llm_sentiment.py          # Claude structured event extraction
+│   └── database.py               # Neon Postgres via SQLAlchemy Core
 │
 ├── features/
-│   ├── indicators.py             # 18 technical indicators (MA, RSI, MACD, BB...)
+│   ├── indicators.py             # 18 technical indicators
 │   ├── walk_forward.py           # Leakage-free features; next-day return target
-│   ├── sentiment_features.py     # Merges sentiment scores onto feature matrix
-│   └── regime.py                 # Volatility-regime detection → position-size scaling
+│   ├── sentiment_features.py     # Sentiment column merge
+│   └── regime.py                 # Vol-percentile regime -> size multiplier
 │
 ├── models/
-│   ├── ensemble.py               # Stacked LR/RF/SVR + conformal prediction intervals
-│   ├── registry.py               # JSON manifest + joblib/keras persistence
-│   ├── linear_regression.py      # LR, Random Forest, SVR (scikit-learn)
-│   ├── neural_network.py         # Experimental Keras LSTM (not in production ensemble)
-│   └── model_comparison.py       # Legacy demo trainer/evaluator
+│   ├── ensemble.py               # Stacked LR/RF/SVR + conformal intervals
+│   ├── registry.py               # Versioned registry; Postgres blob persistence
+│   └── neural_network.py         # Experimental Keras LSTM (not in production)
 │
 ├── training/
-│   ├── walk_forward_trainer.py   # Expanding-window cross-validation + retrain
-│   └── metrics.py                # Sharpe, max drawdown, Calmar, win rate, profit factor
+│   └── walk_forward_trainer.py   # Expanding-window validation + gated promotion
 │
-├── signals/
-│   └── generator.py              # BUY/SELL/HOLD from predicted vs current price
-│
-├── risk/
-│   ├── position_sizer.py         # ATR-based sizing with portfolio exposure cap
-│   └── portfolio.py              # Syncs positions with Alpaca, tracks drawdown
-│
-├── execution/
-│   ├── alpaca_broker.py          # Order submission, position queries
-│   └── order_manager.py          # Full signal → order pipeline with risk checks
+├── signals/  risk/  execution/   # Signal gen, ATR sizing + caps, position-aware orders
 │
 ├── backtest/
-│   ├── engine.py                 # Event-driven backtester (next-day open fill)
-│   └── report.py                 # Financial metrics + equity curve chart
+│   ├── engine.py                 # Next-day-open fills, commission, slippage, stops
+│   └── report.py                 # Metrics + buy-and-hold baseline, always
 │
 ├── monitoring/
-│   ├── dashboard.py              # Streamlit dashboard (Altair, dark theme)
-│   ├── narrator.py               # Claude plain-English "why we traded" summary
-│   └── alerts.py                 # Discord webhook notifications
+│   ├── dashboard.py              # Streamlit + Altair, dark theme
+│   ├── narrator.py               # Claude "why we traded" -> Discord
+│   └── alerts.py                 # Discord webhooks
 │
 ├── jobs/
-│   ├── daily_job.py              # Runs the full trade pipeline for all tickers
-│   ├── train_job.py              # Retrains; promotes only on same-window wins
-│   └── backtest_job.py           # On-demand historical strategy evaluation
+│   ├── daily_job.py              # Full trade cycle (--dry-run supported)
+│   ├── train_job.py              # Weekly retrain + promotion gate
+│   ├── backtest_job.py           # On-demand evaluation
+│   └── backfill_sentiment.py     # Historical sentiment via Alpaca news + Claude
 │
-├── tests/                        # Synthetic-data pytest suite (CI on every push)
+├── tests/                        # 58 tests, fully synthetic - no keys, DB, or TF
 │
 └── .github/workflows/
-    ├── daily_trade.yml           # Cron: Mon–Fri 21:30 UTC (5:30 PM ET)
-    ├── weekly_retrain.yml        # Cron: Sunday 02:00 UTC
-    └── tests.yml                 # pytest on every push and PR
+    ├── daily_trade.yml           # Mon-Fri 21:30 UTC
+    ├── weekly_retrain.yml        # Sunday 02:00 UTC
+    └── tests.yml                 # Every push and PR
 ```
 
-## Models
+Engineering details worth noticing:
 
-The system trains one **ensemble model per ticker** using a stacked architecture:
+- **Durable model registry.** GitHub Actions runners are ephemeral; a model trained Sunday would vanish before Monday's job. The registry writes model blobs to Postgres (metrics and metadata in JSONB) and treats the DB as the source of truth, with local files as a cache. Tests run without any database - the DB layer is strictly opt-in.
+- **Position-aware execution.** SELL closes exactly the held quantity; BUY never stacks onto an open position. No accidental shorts on a cash account.
+- **`--dry-run` mode.** `python -m jobs.daily_job --dry-run` exercises every step - live data, LLM sentiment, model load, conformal gate, regime, sizing - and reports what it *would* do, without submitting orders or posting to Discord.
+- **Graceful degradation everywhere.** No Anthropic SDK, no NLTK, no TensorFlow, no API keys - each absence downgrades a feature instead of crashing a job.
+- **Sentiment backfill.** NewsAPI's free tier only reaches back 30 days; [jobs/backfill_sentiment.py](jobs/backfill_sentiment.py) pages Alpaca's historical news archive and scores years of headlines through the same Claude pipeline, so backtests see a populated sentiment feature.
 
-- **Target**: next-day simple return, from stationary features (price/MA ratios, normalized MACD, RSI, Bollinger position, volume ratios, momentum returns, volatility, news sentiment)
-- **Base models**: Linear Regression, Random Forest, SVR (scikit-learn), each tuned for return-scale targets
-- **Meta-learner**: Ridge regression trained on out-of-fold predictions generated with `TimeSeriesSplit`, so every OOF prediction comes from a model that saw only past data; base models are then refit on the full window
-- **Confidence**: fraction of base models agreeing with the ensemble's direction — the 0.60 gate means at least two of three must agree
-- **Validation**: 5-fold expanding-window walk-forward evaluating the exact ensemble that gets deployed
-- **Registry**: versioned JSON manifest with target metadata; jobs refuse to load a model trained for a different target. A Keras LSTM lives in `models/neural_network.py` as an experimental track outside the production ensemble.
+---
 
-## Intelligence Layer
+## Risk Management
 
-Four components add judgment on top of the base forecaster. Each degrades gracefully — if the Anthropic API key or a dependency is missing, the system keeps running on the simpler path.
-
-- **LLM news sentiment** ([data/llm_sentiment.py](data/llm_sentiment.py)) — instead of VADER scoring words in isolation (which reads "crushes earnings" as negative), Claude reads the day's headlines and returns a structured verdict: direction, a score in [-1, 1], confidence, and the concrete events it keyed on (earnings beat, guidance cut, antitrust suit). Falls back to VADER when `ANTHROPIC_API_KEY` is unset.
-- **Conformal prediction intervals** ([models/ensemble.py](models/ensemble.py)) — split-conformal calibration from out-of-fold residuals gives each prediction an interval with finite-sample coverage. The trade gate is principled: act only when the 80% interval excludes zero (the move is statistically distinguishable from noise), not just when a heuristic confidence clears a threshold.
-- **Volatility-regime sizing** ([features/regime.py](features/regime.py)) — realized-volatility percentile classifies the market as calm/normal/elevated/turbulent and scales position size down (to ~40%) when volatility spikes. Applied identically in live trading and the backtester.
-- **Trade narrator** ([monitoring/narrator.py](monitoring/narrator.py)) — Claude turns each day's actual inputs (predicted return, confidence, sentiment events, regime, risk-gate outcome) into a few grounded sentences explaining *why* the system traded, posted to Discord. Falls back to a templated summary.
-
-## Dashboard
-
-A dark, chart-first Streamlit app (Altair, no matplotlib PNGs):
-
-| Element | Source |
+| Control | Rule |
 |---|---|
-| Equity / cash / return / drawdown KPIs | Alpaca account API + `portfolio_snapshots` |
-| Equity curve with drawdown panel | `portfolio_snapshots` DB table |
-| Signals tab (latest prediction per ticker) | `predictions` DB table |
-| Trades tab | `trades` DB table |
-| Sentiment tab (30-day tone per ticker) | `sentiment` DB table |
-| Models tab (versions, targets, dir. accuracy) | `models/saved/registry.json` |
+| Position sizing | ATR-based: `(portfolio x risk_per_trade) / (ATR x multiplier)` |
+| Exposure cap | Single position <= 15% of portfolio |
+| Regime scaling | Turbulent volatility -> 0.4x size, elevated -> 0.65x |
+| Conformal gate | No trade unless the 80% interval excludes zero |
+| Confidence gate | At least 2 of 3 base models must agree on direction |
+| Circuit breaker | All trading halts at 10% drawdown; manual review to resume |
+| Live-trading gate | `LIVE_TRADING=true` required to touch real money; default false |
+| Account type | Cash account - no margin, no PDT exposure |
 
-## Local Setup
+---
+
+## Run It Yourself
 
 ```bash
 git clone https://github.com/SNMiguel/QuantPilot.git
@@ -137,79 +194,60 @@ python -m venv venv
 source venv/Scripts/activate   # Windows Git Bash
 
 pip install -r requirements.txt
-
-# Copy and fill in your credentials
-cp .env.example .env
+cp .env.example .env           # then fill in your keys
 ```
 
-**Required `.env` keys:**
+**`.env` keys:**
 
 ```
-ALPACA_API_KEY=
+ALPACA_API_KEY=               # alpaca.markets (paper account)
 ALPACA_SECRET_KEY=
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
-DB_URL=                   # Neon.tech PostgreSQL connection string
-NEWS_API_KEY=             # newsapi.org
-DISCORD_WEBHOOK_URL=      # optional — alerts channel
-ANTHROPIC_API_KEY=        # optional — LLM sentiment + trade narration (falls back to VADER)
-LIVE_TRADING=false        # set true only when ready for real money
+DB_URL=                       # Neon.tech Postgres connection string
+NEWS_API_KEY=                 # newsapi.org
+DISCORD_WEBHOOK_URL=          # optional - daily summaries
+ANTHROPIC_API_KEY=            # optional - Claude sentiment + narration
+LLM_MODEL=claude-haiku-4-5    # optional - cheap and fast for daily use
+LIVE_TRADING=false            # the only switch that touches real money
 ```
 
-**Initialize and test:**
+**Then:**
 
 ```bash
-python -m data.database         # Create tables
-python -m data.alpaca_feed      # Verify Alpaca connection
-python -m jobs.train_job        # Train all 3 ticker models (~5 min)
-python -m jobs.daily_job        # Run one full trade cycle
-streamlit run monitoring/dashboard.py
-```
-
-**Backtest a ticker** (includes buy-and-hold comparison, commission, and slippage):
-
-```bash
+python -m pytest tests/ -v                # 58 tests, no credentials needed
+python demo_local.py                      # LLM layer demo (Anthropic key only)
+python -m jobs.train_job                  # train all 3 ticker models
 python -m jobs.backtest_job --ticker AAPL --start 2024-01-01
+python -m jobs.daily_job --dry-run        # full cycle, no orders placed
+streamlit run monitoring/dashboard.py     # local dashboard
 ```
 
-**Run the test suite** (fully synthetic — no API keys or database needed):
+**To automate:** add the `.env` keys above as GitHub Actions secrets (Settings -> Secrets and variables -> Actions). The scheduled workflows take it from there.
 
-```bash
-python -m pytest tests/ -v
-```
-
-## GitHub Actions
-
-Three automated workflows — no server required:
-
-| Workflow | Schedule | Job |
-|---|---|---|
-| `daily_trade.yml` | Mon–Fri 21:30 UTC | `jobs/daily_job.py` (orders queue for next open) |
-| `weekly_retrain.yml` | Sunday 02:00 UTC | `jobs/train_job.py` |
-| `tests.yml` | every push / PR | `pytest tests/` |
-
-**Required GitHub secrets** (Settings → Secrets → Actions):
-`ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `ALPACA_BASE_URL`, `DB_URL`, `NEWS_API_KEY`, `DISCORD_WEBHOOK_URL`, `LIVE_TRADING`
-
-## Risk Management
-
-- **ATR-based position sizing**: `(portfolio × risk_per_trade) / (ATR × multiplier)`
-- **Hard exposure cap**: single position ≤ 15% of portfolio value
-- **Confidence gate**: at least two of three base models must agree on direction (`CONFIDENCE_THRESHOLD` = 0.60)
-- **Drawdown circuit breaker**: all new trades halt if portfolio drawdown exceeds 10% from peak; resuming requires manual review
-- **Position-aware execution**: SELL closes the exact held quantity; BUY never stacks onto an open position (no accidental shorts on a cash account)
-- **LIVE_TRADING gate**: must be explicitly set to `true` to submit real orders
-- **Cash account**: avoids PDT rule (no margin, no 3-trade-per-week limit)
+---
 
 ## Technologies
 
 | Layer | Stack |
 |---|---|
-| ML | scikit-learn (TensorFlow/Keras for the experimental LSTM track) |
-| Data | yfinance, Alpaca Markets API, NewsAPI, VADER |
-| Database | PostgreSQL (Neon.tech) via SQLAlchemy |
-| Dashboard | Streamlit |
-| Automation | GitHub Actions |
+| ML | scikit-learn stacked ensemble; split-conformal intervals |
+| LLM | Anthropic Claude (structured outputs) with deterministic fallbacks |
+| Data | Alpaca Markets API, NewsAPI, VADER |
+| Database | PostgreSQL (Neon.tech) via SQLAlchemy Core |
+| Dashboard | Streamlit + Altair |
+| Automation | GitHub Actions (cron; zero servers) |
 | Alerts | Discord webhooks |
+
+---
+
+## Roadmap
+
+The infrastructure is finished; the open problem is the honest one - finding edge:
+
+- Features with plausible predictive content at the daily horizon: cross-asset signals, options-implied volatility, earnings-calendar proximity
+- Retrain and evaluate against the now-backfilled multi-year LLM sentiment history
+- Longer prediction horizons (weekly), where signal-to-noise is friendlier
+- Gaussian-HMM regime model behind the existing `detect_regime` interface
 
 ## Author
 
@@ -220,4 +258,4 @@ Three automated workflows — no server required:
 
 ---
 
-If you found this project useful, consider giving it a star!
+If this project's approach to honest ML evaluation was useful to you, consider giving it a star.
